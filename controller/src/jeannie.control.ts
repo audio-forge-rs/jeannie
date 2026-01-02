@@ -154,52 +154,6 @@ interface ContentItem {
 
 let allContent: ContentItem[] = [];
 let isScanning = false;
-let popupBrowser: any = null; // Created during init, used later
-
-function enumerateAllContent(): void {
-  if (isScanning) {
-    log('Scan already in progress, skipping...');
-    return;
-  }
-
-  if (!popupBrowser) {
-    log('ERROR: PopupBrowser not initialized', 'error');
-    return;
-  }
-
-  isScanning = true;
-  allContent = [];
-  const startTime = new Date().getTime();
-
-  log('='.repeat(60));
-  log('Starting content enumeration...');
-  log('This will take 60-120 seconds...');
-  log('='.repeat(60));
-
-  try {
-    const browser = popupBrowser;
-
-    // Get available content types
-    const contentTypes: string[] = [];
-    browser.contentTypeNames().addValueObserver((types: string[]) => {
-      for (let i = 0; i < types.length; i++) {
-        if (types[i]) {
-          contentTypes.push(types[i]);
-        }
-      }
-      log('Found content types: ' + contentTypes.join(', '));
-    });
-
-    // Wait for content types to be populated
-    host.scheduleTask(() => {
-      enumerateContentTypes(browser, contentTypes, startTime);
-    }, 1000);
-
-  } catch (e) {
-    log('Error during content enumeration: ' + e, 'error');
-    isScanning = false;
-  }
-}
 
 function enumerateContentTypes(browser: any, contentTypes: string[], startTime: number): void {
   let typeIndex = 0;
@@ -325,9 +279,10 @@ function finishEnumeration(startTime: number): void {
 // Check for rescan flag periodically
 function checkRescanFlag(): void {
   if (fileExists(RESCAN_FLAG)) {
-    log('Rescan flag detected, starting rescan...');
+    log('Rescan flag detected');
     deleteFile(RESCAN_FLAG);
-    enumerateAllContent();
+    log('WARNING: Rescan from flag not supported - PopupBrowser can only be used during init()');
+    log('Please restart Bitwig to rescan content');
   }
 }
 
@@ -343,19 +298,43 @@ function init(): void {
   log('Use Roger CLI to interact with Jeannie');
   log('='.repeat(60));
 
-  // Create PopupBrowser during init (required by Bitwig API)
+  // IMPORTANT: All PopupBrowser operations must happen during init()
+  // We'll set up the enumeration here and let observers handle async work
   try {
-    popupBrowser = host.createPopupBrowser();
-    log('PopupBrowser created successfully');
-  } catch (e) {
-    log('ERROR: Failed to create PopupBrowser: ' + e, 'error');
-    return;
-  }
+    log('Setting up content enumeration...');
+    log('This will run asynchronously and write to content.json when complete');
 
-  // Start content enumeration after 2 seconds (let Bitwig finish loading)
-  host.scheduleTask(() => {
-    enumerateAllContent();
-  }, 2000);
+    const browser = host.createPopupBrowser();
+    const startTime = new Date().getTime();
+
+    log('='.repeat(60));
+    log('Starting content enumeration...');
+    log('This will take 60-120 seconds...');
+    log('='.repeat(60));
+
+    isScanning = true;
+    allContent = [];
+
+    // Get available content types
+    const contentTypes: string[] = [];
+    browser.contentTypeNames().addValueObserver((types: string[]) => {
+      for (let i = 0; i < types.length; i++) {
+        if (types[i]) {
+          contentTypes.push(types[i]);
+        }
+      }
+      log('Found content types: ' + contentTypes.join(', '));
+
+      // Start enumerating content types
+      host.scheduleTask(() => {
+        enumerateContentTypes(browser, contentTypes, startTime);
+      }, 1000);
+    });
+
+  } catch (e) {
+    log('ERROR: Failed to set up content enumeration: ' + e, 'error');
+    isScanning = false;
+  }
 
   // Check for rescan flag every 10 seconds
   host.scheduleTask(function checkFlag() {
