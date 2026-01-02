@@ -8,7 +8,6 @@
 
 // Bitwig API type stubs
 declare const loadAPI: (version: number) => void;
-declare const load: (url: string) => string;
 declare const host: {
   defineController: (
     vendor: string,
@@ -22,8 +21,11 @@ declare const host: {
   println: (message: string) => void;
 };
 
-const JEANNIE_VERSION = '0.3.0';
-const API_URL = 'http://localhost:3000';
+// Java interop for file I/O (Nashorn provides access to Java classes)
+declare const Java: any;
+
+const JEANNIE_VERSION = '0.4.0';
+const LOG_FILE = '/tmp/jeannie/controller.log';
 
 loadAPI(18);
 
@@ -37,26 +39,38 @@ host.defineController(
 
 host.defineMidiPorts(0, 0);
 
-// Logger function that sends to both console and file
+// Logger function that writes to both console and file (using Java FileWriter)
 function log(message: string, level: string = 'info'): void {
-  // Always log to Bitwig console
+  // Always log to Bitwig Script Console
   host.println(message);
 
-  // Try to send to web API for file logging
+  // Write to file using Java FileWriter (Bitwig/Nashorn way)
   try {
-    const payload = JSON.stringify({
-      level: level,
-      message: message,
-      version: JEANNIE_VERSION
-    });
+    const File = Java.type('java.io.File');
+    const FileWriter = Java.type('java.io.FileWriter');
+    const BufferedWriter = Java.type('java.io.BufferedWriter');
+    const SimpleDateFormat = Java.type('java.text.SimpleDateFormat');
+    const Date = Java.type('java.util.Date');
 
-    const url = API_URL + '/api/bitwig/log';
-    load(url + '?level=' + encodeURIComponent(level) +
-         '&message=' + encodeURIComponent(message) +
-         '&version=' + encodeURIComponent(JEANNIE_VERSION));
+    // Ensure directory exists
+    const logFile = new File(LOG_FILE);
+    const parentDir = logFile.getParentFile();
+    if (!parentDir.exists()) {
+      parentDir.mkdirs();
+    }
+
+    // Format timestamp
+    const dateFormat = new SimpleDateFormat('yyyy-MM-dd HH:mm:ss.SSS');
+    const timestamp = dateFormat.format(new Date());
+
+    // Write log entry
+    const fw = new FileWriter(LOG_FILE, true); // append mode
+    const bw = new BufferedWriter(fw);
+    bw.write('[' + timestamp + '] [' + level.toUpperCase() + '] ' + message + '\n');
+    bw.close();
   } catch (e) {
-    // Silently fail if API is not available
-    // Don't spam console with connection errors
+    // Silently fail if file writing doesn't work
+    // Log appears in console regardless
   }
 }
 

@@ -442,6 +442,16 @@ node web/dist/server.js
 - Controller gracefully degrades if web server is down (console-only logging)
 - Use `grep` to filter logs: `tail -f ~/Library/Logs/Bitwig/logs/jeannie.log | grep -i error`
 
+**⚠️ CRITICAL DEBUGGING PRINCIPLE**:
+- **NEVER delete code or functionality to debug issues**
+- **ALWAYS add logging, not remove code**
+- **ALWAYS catch more edge cases and exceptions**
+- **NEVER comment out working code to isolate problems**
+- Debug by adding instrumentation, not by subtraction
+- If something breaks, add logs to understand why - don't remove the feature
+- Use feature flags if you must disable functionality temporarily
+- Preserve all working code and only enhance error handling
+
 ## Security & Git Hygiene
 
 ### Gitignored Files
