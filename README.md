@@ -21,6 +21,35 @@ Node.js/Express server providing:
 ### Roger (CLI Tool)
 Python command-line tool for interacting with Jeannie via REST API.
 
+### Jeannie Compose (CLI Tool)
+TypeScript CLI for ABC notation → MIDI → Bitwig composition workflow.
+
+## CLI Tools: Roger vs Compose
+
+Jeannie has two CLI tools with **distinct purposes**:
+
+| Tool | Language | Purpose |
+|------|----------|---------|
+| **roger** | Python | General-purpose Jeannie CLI: health, status, content search, **track management** |
+| **jeannie-compose** | TypeScript | Specialized ABC→MIDI composition pipeline: validate, convert, load |
+
+Think of it like `git` vs `git-lfs`:
+- **Roger** is the main CLI for interacting with Jeannie/Bitwig
+- **Compose** is a specialized extension for the music composition workflow
+
+```bash
+# Roger - general Bitwig control
+roger health                    # Check server health
+roger track list               # List all tracks
+roger track create --name Piano # Create track
+roger content search "strings"  # Search content
+
+# Compose - music composition workflow
+jeannie-compose validate ./song.abc   # Validate ABC notation
+jeannie-compose convert ./song.abc    # Convert to MIDI
+jeannie-compose load ./song.mid       # Load into Bitwig
+```
+
 ## Quick Start
 
 ```bash

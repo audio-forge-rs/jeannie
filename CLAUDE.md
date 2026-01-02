@@ -2,12 +2,13 @@
 
 ## Project Overview
 
-**Jeannie** is a Bitwig Studio controller ecosystem with three main components:
+**Jeannie** is a Bitwig Studio controller ecosystem with four main components:
 - **Bitwig Controller**: TypeScript controller script (transpiles to JS for Bitwig)
 - **Web Server & API**: Node.js/Express REST API with real-time web interface
-- **Roger CLI**: Python command-line tool for configuration and control
+- **Roger CLI**: Python command-line tool for general Bitwig control
+- **Compose CLI**: TypeScript CLI for ABC→MIDI composition workflow
 
-**Current Version**: 0.8.0
+**Current Version**: 0.10.0 (see `versions.json` for per-component versions)
 **Vendor**: Audio Forge RS
 **Status**: Active Development
 
@@ -76,6 +77,46 @@ jeannie/
 ├── ARCHITECTURE.md     # Detailed architecture docs
 └── CLAUDE.md           # Development guidelines (this file)
 ```
+
+## CLI Tools: Roger vs Compose
+
+Jeannie has **two CLI tools** with distinct purposes:
+
+| Tool | Language | Purpose |
+|------|----------|---------|
+| **roger** (`roger/roger.py`) | Python | General-purpose Jeannie CLI |
+| **jeannie-compose** (`compose/src/cli.ts`) | TypeScript | Specialized composition pipeline |
+
+### Roger CLI - General Bitwig Control
+The **primary CLI** for interacting with Jeannie and Bitwig:
+- Health checks and status monitoring
+- Content search (devices, presets, samples)
+- **Track management** (create, select, mute, solo, volume, pan)
+- Configuration management
+
+```bash
+roger health                      # Check server health
+roger track list                  # List all tracks
+roger track create --name Piano   # Create instrument track
+roger track mute                  # Mute current track
+roger content search "strings"    # Search content index
+```
+
+### Compose CLI - ABC→MIDI Workflow
+A **specialized extension** for AI-assisted music composition:
+- ABC notation validation
+- ABC to MIDI conversion
+- Loading MIDI into Bitwig
+
+```bash
+jeannie-compose validate ./song.abc   # Validate ABC notation
+jeannie-compose convert ./song.abc    # Convert to MIDI
+jeannie-compose load ./song.mid       # Load into Bitwig
+```
+
+**Analogy**: Think of it like `git` vs `git-lfs` - Roger is the main tool, Compose is a specialized extension.
+
+**Important**: Roger is NOT abandoned. It is the primary CLI and is actively maintained.
 
 ## Key Concepts
 
@@ -158,12 +199,12 @@ GET /api/content/search?q=piano&type=Preset&creator=Native%20Instruments
 
 ```json
 {
-  "main": "0.9.0",
-  "web": "0.9.0",
-  "controller": "0.9.0",
+  "main": "0.10.0",
+  "web": "0.10.0",
+  "controller": "0.10.0",
   "compose": "0.9.0",
   "shared": "0.9.0",
-  "roger": "0.9.0"
+  "roger": "0.10.0"
 }
 ```
 
@@ -175,11 +216,23 @@ Each component reads its version from this file at runtime:
 
 The controller runs in Bitwig's isolated environment, so `npm run build` copies `versions.json` to `~/.config/jeannie/` via the `sync-versions` script.
 
+**Independent Versioning Strategy**:
+Each component has its own version number. Only bump components that actually changed:
+
+| Component | When to Bump |
+|-----------|--------------|
+| `main` | Any significant release (tracks latest major feature) |
+| `controller` | Bitwig controller script changes |
+| `web` | Web server or API changes |
+| `roger` | Roger CLI changes |
+| `compose` | Compose CLI changes |
+| `shared` | Shared type definitions changes |
+
 **Bump Strategy**:
 - Edit `/versions.json` only - this is the single source of truth
 - Run `npm run build` to sync versions to `~/.config/jeannie/`
-- Bump often - every feature or significant fix
-- All components now share the same version number for simplicity
+- Only bump components that changed - this makes it clear what was modified
+- Use semantic versioning: MAJOR.MINOR.PATCH
 
 **Package.json Sync**:
 The `package.json` files should also be updated when bumping versions (for npm compatibility), but the runtime versions come from `versions.json`.

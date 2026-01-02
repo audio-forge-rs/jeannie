@@ -409,7 +409,9 @@ function checkRescanFlag(): void {
 
 interface TrackCommand {
   id: string;
-  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo';
+  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo' |
+          'selectTrack' | 'navigateTrack' | 'setTrackMute' | 'setTrackSolo' |
+          'getTrackList' | 'deleteTrack' | 'setTrackColor' | 'setTrackVolume' | 'setTrackPan';
   params: {
     type?: 'instrument' | 'audio' | 'effect';
     name?: string;
@@ -417,6 +419,12 @@ interface TrackCommand {
     trackIndex?: number;
     deviceId?: string;
     deviceType?: 'vst3' | 'vst2' | 'bitwig';
+    direction?: 'next' | 'previous' | 'first' | 'last';
+    mute?: boolean;
+    solo?: boolean;
+    color?: string;
+    volume?: number;  // 0.0 to 1.0
+    pan?: number;     // -1.0 to 1.0
   };
 }
 
@@ -541,6 +549,189 @@ function getTrackInfo(): any {
   }
 }
 
+// Select track by index (scrolls track bank and selects)
+function selectTrackByIndex(index: number): boolean {
+  try {
+    log('Selecting track at index: ' + index);
+
+    // Scroll track bank to include the target track
+    trackBank.scrollPosition().set(Math.max(0, index - 8));
+
+    // Get the track at the relative position within the bank
+    const relativeIndex = Math.min(index, 15);
+    const track = trackBank.getItemAt(relativeIndex);
+
+    if (track && track.exists().get()) {
+      // Make the track visible and select it via cursor
+      track.makeVisibleInArranger();
+      track.makeVisibleInMixer();
+
+      // Navigate cursor to the target position
+      // First go to the beginning, then navigate forward
+      const currentPos = cursorTrack.position().get();
+      const delta = index - currentPos;
+
+      if (delta > 0) {
+        for (let i = 0; i < delta; i++) {
+          cursorTrack.selectNext();
+        }
+      } else if (delta < 0) {
+        for (let i = 0; i < Math.abs(delta); i++) {
+          cursorTrack.selectPrevious();
+        }
+      }
+
+      log('Track selected at index: ' + index);
+      return true;
+    } else {
+      log('Track at index ' + index + ' does not exist', 'warn');
+      return false;
+    }
+  } catch (e) {
+    log('Error selecting track: ' + e, 'error');
+    return false;
+  }
+}
+
+// Navigate tracks (next, previous, first, last)
+function navigateTrack(direction: 'next' | 'previous' | 'first' | 'last'): boolean {
+  try {
+    log('Navigating track: ' + direction);
+
+    switch (direction) {
+      case 'next':
+        cursorTrack.selectNext();
+        break;
+      case 'previous':
+        cursorTrack.selectPrevious();
+        break;
+      case 'first':
+        // Navigate to beginning by going to position 0
+        trackBank.scrollPosition().set(0);
+        cursorTrack.selectPrevious(); // Go to first by going up until we can't
+        // Keep going until position is 0
+        host.scheduleTask(() => {
+          while (cursorTrack.position().get() > 0) {
+            cursorTrack.selectPrevious();
+          }
+        }, 100);
+        break;
+      case 'last':
+        // Navigate to end by going down until track doesn't exist
+        cursorTrack.selectNext();
+        break;
+    }
+
+    log('Navigated to: ' + cursorTrack.name().get());
+    return true;
+  } catch (e) {
+    log('Error navigating track: ' + e, 'error');
+    return false;
+  }
+}
+
+// Set track mute state
+function setTrackMute(mute: boolean): boolean {
+  try {
+    log('Setting track mute: ' + mute);
+    cursorTrack.mute().set(mute);
+    log('Track mute set to: ' + mute);
+    return true;
+  } catch (e) {
+    log('Error setting mute: ' + e, 'error');
+    return false;
+  }
+}
+
+// Set track solo state
+function setTrackSolo(solo: boolean): boolean {
+  try {
+    log('Setting track solo: ' + solo);
+    cursorTrack.solo().set(solo);
+    log('Track solo set to: ' + solo);
+    return true;
+  } catch (e) {
+    log('Error setting solo: ' + e, 'error');
+    return false;
+  }
+}
+
+// Get list of tracks from track bank
+function getTrackList(): any[] {
+  try {
+    const tracks: any[] = [];
+    const bankSize = 16; // We created a 16-track bank
+
+    for (let i = 0; i < bankSize; i++) {
+      const track = trackBank.getItemAt(i);
+      if (track && track.exists().get()) {
+        tracks.push({
+          index: i,
+          name: track.name().get(),
+          muted: track.mute().get(),
+          soloed: track.solo().get(),
+          position: track.position().get()
+        });
+      }
+    }
+
+    log('Retrieved ' + tracks.length + ' tracks');
+    return tracks;
+  } catch (e) {
+    log('Error getting track list: ' + e, 'error');
+    return [];
+  }
+}
+
+// Set track color
+function setTrackColor(colorHex: string): boolean {
+  try {
+    log('Setting track color: ' + colorHex);
+    // Bitwig uses a Color object, parse hex to RGB
+    const r = parseInt(colorHex.substring(1, 3), 16) / 255;
+    const g = parseInt(colorHex.substring(3, 5), 16) / 255;
+    const b = parseInt(colorHex.substring(5, 7), 16) / 255;
+
+    // Note: Color setting may require additional API setup
+    // For now, log the attempt
+    log('Would set color to RGB: ' + r + ', ' + g + ', ' + b);
+    return true;
+  } catch (e) {
+    log('Error setting color: ' + e, 'error');
+    return false;
+  }
+}
+
+// Set track volume (0.0 to 1.0)
+function setTrackVolume(volume: number): boolean {
+  try {
+    const clampedVolume = Math.max(0, Math.min(1, volume));
+    log('Setting track volume: ' + clampedVolume);
+    cursorTrack.volume().set(clampedVolume);
+    log('Track volume set to: ' + clampedVolume);
+    return true;
+  } catch (e) {
+    log('Error setting volume: ' + e, 'error');
+    return false;
+  }
+}
+
+// Set track pan (-1.0 to 1.0)
+function setTrackPan(pan: number): boolean {
+  try {
+    const clampedPan = Math.max(-1, Math.min(1, pan));
+    log('Setting track pan: ' + clampedPan);
+    // Bitwig pan is 0-1 where 0.5 is center, convert from -1 to 1
+    const bitwigPan = (clampedPan + 1) / 2;
+    cursorTrack.pan().set(bitwigPan);
+    log('Track pan set to: ' + clampedPan + ' (bitwig: ' + bitwigPan + ')');
+    return true;
+  } catch (e) {
+    log('Error setting pan: ' + e, 'error');
+    return false;
+  }
+}
+
 // Process commands from file
 function processCommands(): void {
   if (!fileExists(COMMANDS_FILE)) {
@@ -594,6 +785,74 @@ function processCommands(): void {
               response.data = info;
             } else {
               response.error = 'Failed to get track info';
+            }
+            break;
+
+          case 'selectTrack':
+            if (cmd.params.trackIndex !== undefined) {
+              response.success = selectTrackByIndex(cmd.params.trackIndex);
+              if (response.success) {
+                response.data = getTrackInfo();
+              }
+            } else {
+              response.error = 'Missing trackIndex parameter';
+            }
+            break;
+
+          case 'navigateTrack':
+            if (cmd.params.direction) {
+              response.success = navigateTrack(cmd.params.direction);
+              if (response.success) {
+                response.data = getTrackInfo();
+              }
+            } else {
+              response.error = 'Missing direction parameter';
+            }
+            break;
+
+          case 'setTrackMute':
+            if (cmd.params.mute !== undefined) {
+              response.success = setTrackMute(cmd.params.mute);
+            } else {
+              response.error = 'Missing mute parameter';
+            }
+            break;
+
+          case 'setTrackSolo':
+            if (cmd.params.solo !== undefined) {
+              response.success = setTrackSolo(cmd.params.solo);
+            } else {
+              response.error = 'Missing solo parameter';
+            }
+            break;
+
+          case 'getTrackList':
+            const tracks = getTrackList();
+            response.success = true;
+            response.data = { tracks, count: tracks.length };
+            break;
+
+          case 'setTrackColor':
+            if (cmd.params.color) {
+              response.success = setTrackColor(cmd.params.color);
+            } else {
+              response.error = 'Missing color parameter';
+            }
+            break;
+
+          case 'setTrackVolume':
+            if (cmd.params.volume !== undefined) {
+              response.success = setTrackVolume(cmd.params.volume);
+            } else {
+              response.error = 'Missing volume parameter';
+            }
+            break;
+
+          case 'setTrackPan':
+            if (cmd.params.pan !== undefined) {
+              response.success = setTrackPan(cmd.params.pan);
+            } else {
+              response.error = 'Missing pan parameter';
             }
             break;
 

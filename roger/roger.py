@@ -148,6 +148,57 @@ class RogerCLI:
         """Trigger content rescan"""
         return self._make_request('/api/content/rescan', method='POST')
 
+    # Track management methods
+
+    def track_list(self) -> Dict[str, Any]:
+        """List all tracks in the current project"""
+        return self._make_request('/api/bitwig/tracks')
+
+    def track_current(self) -> Dict[str, Any]:
+        """Get info about current/selected track"""
+        return self._make_request('/api/bitwig/tracks/current')
+
+    def track_create(self, track_type: str = 'instrument', name: Optional[str] = None,
+                     position: int = -1) -> Dict[str, Any]:
+        """Create a new track"""
+        data = {'type': track_type, 'position': position}
+        if name:
+            data['name'] = name
+        return self._make_request('/api/bitwig/tracks', method='POST', data=data)
+
+    def track_select(self, index: int) -> Dict[str, Any]:
+        """Select track by index"""
+        return self._make_request('/api/bitwig/tracks/select', method='POST', data={'index': index})
+
+    def track_navigate(self, direction: str) -> Dict[str, Any]:
+        """Navigate to next, previous, first, or last track"""
+        return self._make_request('/api/bitwig/tracks/navigate', method='POST', data={'direction': direction})
+
+    def track_rename(self, name: str) -> Dict[str, Any]:
+        """Rename current track"""
+        return self._make_request('/api/bitwig/tracks/rename', method='POST', data={'name': name})
+
+    def track_mute(self, mute: bool) -> Dict[str, Any]:
+        """Set track mute state"""
+        return self._make_request('/api/bitwig/tracks/mute', method='POST', data={'mute': mute})
+
+    def track_solo(self, solo: bool) -> Dict[str, Any]:
+        """Set track solo state"""
+        return self._make_request('/api/bitwig/tracks/solo', method='POST', data={'solo': solo})
+
+    def track_volume(self, volume: float) -> Dict[str, Any]:
+        """Set track volume (0.0 to 1.0)"""
+        return self._make_request('/api/bitwig/tracks/volume', method='POST', data={'volume': volume})
+
+    def track_pan(self, pan: float) -> Dict[str, Any]:
+        """Set track pan (-1.0 to 1.0)"""
+        return self._make_request('/api/bitwig/tracks/pan', method='POST', data={'pan': pan})
+
+    def track_device(self, device_id: str, device_type: str = 'vst3') -> Dict[str, Any]:
+        """Insert device into current track"""
+        return self._make_request('/api/bitwig/tracks/device', method='POST',
+                                  data={'deviceId': device_id, 'deviceType': device_type})
+
     def update_config(self) -> bool:
         """Update config file with Roger's info"""
         try:
@@ -257,6 +308,60 @@ def main():
 
     # content rescan
     content_subparsers.add_parser('rescan', help='Trigger content rescan')
+
+    # Track commands
+    track_parser = subparsers.add_parser('track', help='Track management commands')
+    track_subparsers = track_parser.add_subparsers(dest='track_command', help='Track commands')
+
+    # track list
+    track_subparsers.add_parser('list', help='List all tracks')
+
+    # track current
+    track_subparsers.add_parser('current', help='Get current track info')
+
+    # track create
+    create_parser = track_subparsers.add_parser('create', help='Create a new track')
+    create_parser.add_argument('--type', choices=['instrument', 'audio', 'effect'],
+                               default='instrument', help='Track type (default: instrument)')
+    create_parser.add_argument('--name', help='Track name')
+    create_parser.add_argument('--position', type=int, default=-1,
+                               help='Position to insert (-1 for end)')
+
+    # track select
+    select_parser = track_subparsers.add_parser('select', help='Select track by index')
+    select_parser.add_argument('index', type=int, help='Track index (0-based)')
+
+    # track next/prev/first/last
+    track_subparsers.add_parser('next', help='Select next track')
+    track_subparsers.add_parser('prev', help='Select previous track')
+    track_subparsers.add_parser('first', help='Select first track')
+    track_subparsers.add_parser('last', help='Select last track')
+
+    # track rename
+    rename_parser = track_subparsers.add_parser('rename', help='Rename current track')
+    rename_parser.add_argument('name', help='New track name')
+
+    # track mute
+    mute_parser = track_subparsers.add_parser('mute', help='Mute current track')
+    mute_parser.add_argument('--off', action='store_true', help='Unmute instead of mute')
+
+    # track solo
+    solo_parser = track_subparsers.add_parser('solo', help='Solo current track')
+    solo_parser.add_argument('--off', action='store_true', help='Unsolo instead of solo')
+
+    # track volume
+    volume_parser = track_subparsers.add_parser('volume', help='Set track volume')
+    volume_parser.add_argument('value', type=float, help='Volume (0.0 to 1.0, or percentage like 75)')
+
+    # track pan
+    pan_parser = track_subparsers.add_parser('pan', help='Set track pan')
+    pan_parser.add_argument('value', type=float, help='Pan (-1.0 left to 1.0 right, 0 = center)')
+
+    # track device
+    device_parser = track_subparsers.add_parser('device', help='Insert device into current track')
+    device_parser.add_argument('device_id', help='Device ID (e.g., VST3 ID)')
+    device_parser.add_argument('--type', choices=['vst3', 'vst2', 'bitwig'],
+                               default='vst3', help='Device type (default: vst3)')
 
     args = parser.parse_args()
 
@@ -385,6 +490,146 @@ def main():
         elif args.content_command == 'rescan':
             response = cli.content_rescan()
             cli.print_response(response, args.raw)
+
+    elif args.command == 'track':
+        if not hasattr(args, 'track_command') or not args.track_command:
+            track_parser.print_help()
+            sys.exit(0)
+
+        if args.track_command == 'list':
+            response = cli.track_list()
+            if response.get('success') and 'data' in response:
+                data = response['data']
+                tracks = data.get('tracks', [])
+                print(f"✓ {len(tracks)} track(s) in project:\n")
+                for track in tracks:
+                    idx = track.get('index', '?')
+                    name = track.get('name', 'Unnamed')
+                    muted = '[M]' if track.get('muted') else '   '
+                    soloed = '[S]' if track.get('soloed') else '   '
+                    print(f"  {idx}: {muted}{soloed} {name}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'current':
+            response = cli.track_current()
+            if response.get('success') and 'data' in response:
+                data = response['data']
+                print("✓ Current track:")
+                print(f"  Name: {data.get('name', 'Unknown')}")
+                print(f"  Position: {data.get('position', '?')}")
+                print(f"  Muted: {data.get('muted', False)}")
+                print(f"  Soloed: {data.get('soloed', False)}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'create':
+            response = cli.track_create(
+                track_type=args.type,
+                name=args.name,
+                position=args.position
+            )
+            if response.get('success'):
+                track_name = args.name or f'New {args.type} track'
+                print(f"✓ Created {args.type} track: {track_name}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'select':
+            response = cli.track_select(args.index)
+            if response.get('success') and 'data' in response:
+                data = response['data']
+                print(f"✓ Selected track {args.index}: {data.get('name', 'Unknown')}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'next':
+            response = cli.track_navigate('next')
+            if response.get('success') and 'data' in response:
+                data = response['data']
+                print(f"✓ Moved to track: {data.get('name', 'Unknown')}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'prev':
+            response = cli.track_navigate('previous')
+            if response.get('success') and 'data' in response:
+                data = response['data']
+                print(f"✓ Moved to track: {data.get('name', 'Unknown')}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'first':
+            response = cli.track_navigate('first')
+            if response.get('success') and 'data' in response:
+                data = response['data']
+                print(f"✓ Moved to first track: {data.get('name', 'Unknown')}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'last':
+            response = cli.track_navigate('last')
+            if response.get('success') and 'data' in response:
+                data = response['data']
+                print(f"✓ Moved to last track: {data.get('name', 'Unknown')}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'rename':
+            response = cli.track_rename(args.name)
+            if response.get('success'):
+                print(f"✓ Track renamed to: {args.name}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'mute':
+            mute_state = not args.off
+            response = cli.track_mute(mute_state)
+            if response.get('success'):
+                print(f"✓ Track {'muted' if mute_state else 'unmuted'}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'solo':
+            solo_state = not args.off
+            response = cli.track_solo(solo_state)
+            if response.get('success'):
+                print(f"✓ Track solo {'enabled' if solo_state else 'disabled'}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'volume':
+            # Support both 0.0-1.0 and percentage (1-100)
+            volume = args.value
+            if volume > 1.0:
+                volume = volume / 100.0  # Assume percentage
+            volume = max(0.0, min(1.0, volume))
+            response = cli.track_volume(volume)
+            if response.get('success'):
+                print(f"✓ Track volume set to {int(volume * 100)}%")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'pan':
+            pan = max(-1.0, min(1.0, args.value))
+            response = cli.track_pan(pan)
+            if response.get('success'):
+                if pan == 0:
+                    label = "center"
+                elif pan < 0:
+                    label = f"{int(abs(pan) * 100)}% left"
+                else:
+                    label = f"{int(pan * 100)}% right"
+                print(f"✓ Track pan set to {label}")
+            else:
+                cli.print_response(response, args.raw)
+
+        elif args.track_command == 'device':
+            response = cli.track_device(args.device_id, args.type)
+            if response.get('success'):
+                print(f"✓ Device inserted: {args.device_id} ({args.type})")
+            else:
+                cli.print_response(response, args.raw)
 
 
 if __name__ == '__main__':

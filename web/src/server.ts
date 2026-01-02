@@ -630,7 +630,9 @@ app.post('/api/content/rescan', (_req: Request, res: Response) => {
 
 interface TrackCommand {
   id: string;
-  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo';
+  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo' |
+          'selectTrack' | 'navigateTrack' | 'setTrackMute' | 'setTrackSolo' |
+          'getTrackList' | 'deleteTrack' | 'setTrackColor' | 'setTrackVolume' | 'setTrackPan';
   params: {
     type?: 'instrument' | 'audio' | 'effect';
     name?: string;
@@ -638,6 +640,12 @@ interface TrackCommand {
     trackIndex?: number;
     deviceId?: string;
     deviceType?: 'vst3' | 'vst2' | 'bitwig';
+    direction?: 'next' | 'previous' | 'first' | 'last';
+    mute?: boolean;
+    solo?: boolean;
+    color?: string;
+    volume?: number;
+    pan?: number;
   };
 }
 
@@ -821,6 +829,212 @@ app.get('/api/bitwig/tracks/current', async (_req: Request, res: Response) => {
   const response: ApiResponse = {
     success: result.success,
     data: result.data,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// List all tracks
+app.get('/api/bitwig/tracks', async (_req: Request, res: Response) => {
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'getTrackList',
+    params: {}
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.data,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Select track by index
+app.post('/api/bitwig/tracks/select', async (req: Request, res: Response) => {
+  const { index } = req.body;
+
+  if (index === undefined || typeof index !== 'number') {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Track index is required (number)',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'selectTrack',
+    params: { trackIndex: index }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.data,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Navigate tracks (next, previous, first, last)
+app.post('/api/bitwig/tracks/navigate', async (req: Request, res: Response) => {
+  const { direction } = req.body;
+
+  if (!direction || !['next', 'previous', 'first', 'last'].includes(direction)) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Direction is required: next, previous, first, or last',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'navigateTrack',
+    params: { direction }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.data,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Set track mute
+app.post('/api/bitwig/tracks/mute', async (req: Request, res: Response) => {
+  const { mute } = req.body;
+
+  if (mute === undefined || typeof mute !== 'boolean') {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Mute state is required (boolean)',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'setTrackMute',
+    params: { mute }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: `Track ${mute ? 'muted' : 'unmuted'}` } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Set track solo
+app.post('/api/bitwig/tracks/solo', async (req: Request, res: Response) => {
+  const { solo } = req.body;
+
+  if (solo === undefined || typeof solo !== 'boolean') {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Solo state is required (boolean)',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'setTrackSolo',
+    params: { solo }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: `Track solo ${solo ? 'enabled' : 'disabled'}` } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Set track volume (0.0 to 1.0)
+app.post('/api/bitwig/tracks/volume', async (req: Request, res: Response) => {
+  const { volume } = req.body;
+
+  if (volume === undefined || typeof volume !== 'number' || volume < 0 || volume > 1) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Volume is required (number between 0.0 and 1.0)',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'setTrackVolume',
+    params: { volume }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: `Track volume set to ${(volume * 100).toFixed(0)}%` } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Set track pan (-1.0 to 1.0)
+app.post('/api/bitwig/tracks/pan', async (req: Request, res: Response) => {
+  const { pan } = req.body;
+
+  if (pan === undefined || typeof pan !== 'number' || pan < -1 || pan > 1) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Pan is required (number between -1.0 and 1.0)',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'setTrackPan',
+    params: { pan }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const panLabel = pan === 0 ? 'center' : (pan < 0 ? `${Math.abs(pan * 100).toFixed(0)}% left` : `${(pan * 100).toFixed(0)}% right`);
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: `Track pan set to ${panLabel}` } : undefined,
     error: result.error,
     timestamp: new Date().toISOString()
   };

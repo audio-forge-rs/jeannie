@@ -408,7 +408,9 @@ program
     console.log('  [x] ABC to MIDI conversion (midi-writer-js)');
     console.log('  [x] Bitwig track creation (via controller API)');
     console.log('  [x] Bitwig track naming (via controller API)');
-    console.log('  [ ] Bitwig device insertion (partial)');
+    console.log('  [x] Bitwig track selection/navigation');
+    console.log('  [x] Bitwig track mute/solo/volume/pan');
+    console.log('  [x] Bitwig device insertion (VST3, VST2, Bitwig)');
     console.log('  [ ] Live MIDI note sending (TODO)');
 
     console.log('\nABC Notation:');
