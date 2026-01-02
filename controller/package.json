@@ -1,6 +1,6 @@
 {
   "name": "@jeannie/controller",
-  "version": "0.5.1",
+  "version": "0.9.0",
   "description": "Jeannie Bitwig Studio controller script",
   "main": "dist/jeannie.control.js",
   "scripts": {

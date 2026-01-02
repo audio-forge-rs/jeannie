@@ -1,6 +1,6 @@
 {
   "name": "@jeannie/shared",
-  "version": "0.1.0",
+  "version": "0.9.0",
   "description": "Shared types and interfaces for Jeannie Bitwig controller",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

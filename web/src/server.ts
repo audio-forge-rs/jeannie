@@ -1,9 +1,9 @@
 /**
  * Jeannie - REST API Server
- * Version: 0.3.0
  * Vendor: Audio Forge RS
  *
  * Main server providing REST API for Jeannie with web UI and connection status tracking
+ * Version is read from /versions.json (single source of truth)
  */
 
 import express, { Request, Response } from 'express';
@@ -16,12 +16,20 @@ import { execSync } from 'child_process';
 import { ConfigWatcher, CONFIG_PATH, JeannieConfig, ConnectionStatus } from './configWatcher';
 import { ContentSearchIndex, SearchFilters } from './contentSearch';
 
+// Load versions from single source of truth
+const VERSIONS_FILE = path.join(__dirname, '..', '..', 'versions.json');
+const versions = JSON.parse(fs.readFileSync(VERSIONS_FILE, 'utf8'));
+
 // Controller log path for monitoring connection status
 const CONTROLLER_LOG_PATH = path.join(os.homedir(), '.config', 'jeannie', 'logs', 'controller.log');
 
 // Content index paths
 const CONTENT_FILE = path.join(os.homedir(), '.config', 'jeannie', 'content.json');
 const RESCAN_FLAG = path.join(os.homedir(), '.config', 'jeannie', 'rescan.flag');
+
+// Track management paths (command/response communication with Bitwig controller)
+const COMMANDS_FILE = path.join(os.homedir(), '.config', 'jeannie', 'commands.json');
+const RESPONSE_FILE = path.join(os.homedir(), '.config', 'jeannie', 'response.json');
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -40,7 +48,7 @@ interface HealthResponse {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.7.0';
+const VERSION = versions.web;
 
 const startTime = Date.now();
 const configWatcher = new ConfigWatcher();
@@ -614,6 +622,209 @@ app.post('/api/content/rescan', (_req: Request, res: Response) => {
     };
     res.status(500).json(response);
   }
+});
+
+// =============================================================================
+// Track Management API
+// =============================================================================
+
+interface TrackCommand {
+  id: string;
+  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo';
+  params: {
+    type?: 'instrument' | 'audio' | 'effect';
+    name?: string;
+    position?: number;
+    trackIndex?: number;
+    deviceId?: string;
+    deviceType?: 'vst3' | 'vst2' | 'bitwig';
+  };
+}
+
+// Helper to send command to Bitwig controller
+async function sendBitwigCommand(command: TrackCommand): Promise<{ success: boolean; error?: string; data?: any }> {
+  return new Promise((resolve) => {
+    try {
+      // Check if Bitwig is running
+      if (!isBitwigRunning()) {
+        resolve({ success: false, error: 'Bitwig is not running' });
+        return;
+      }
+
+      // Write command to file
+      fs.writeFileSync(COMMANDS_FILE, JSON.stringify([command], null, 2), 'utf8');
+      console.log(`[Track] Sent command: ${command.action} (${command.id})`);
+
+      // Poll for response (max 5 seconds)
+      let attempts = 0;
+      const maxAttempts = 50; // 50 * 100ms = 5 seconds
+
+      const checkResponse = () => {
+        attempts++;
+
+        if (fs.existsSync(RESPONSE_FILE)) {
+          try {
+            const responseData = JSON.parse(fs.readFileSync(RESPONSE_FILE, 'utf8'));
+            if (responseData.id === command.id) {
+              fs.unlinkSync(RESPONSE_FILE); // Clean up response file
+              resolve(responseData);
+              return;
+            }
+          } catch (e) {
+            // Response file not ready yet
+          }
+        }
+
+        if (attempts >= maxAttempts) {
+          resolve({ success: false, error: 'Timeout waiting for controller response' });
+          return;
+        }
+
+        setTimeout(checkResponse, 100);
+      };
+
+      setTimeout(checkResponse, 100);
+    } catch (error) {
+      resolve({ success: false, error: 'Failed to send command: ' + (error as Error).message });
+    }
+  });
+}
+
+// Generate unique command ID
+function generateCommandId(): string {
+  return `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Create track
+app.post('/api/bitwig/tracks', async (req: Request, res: Response) => {
+  const { type = 'instrument', name, position = -1 } = req.body;
+
+  if (!['instrument', 'audio', 'effect'].includes(type)) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Invalid track type. Must be: instrument, audio, or effect',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'createTrack',
+    params: { type, position }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  // If track created and name provided, rename it
+  if (result.success && name) {
+    const renameCommand: TrackCommand = {
+      id: generateCommandId(),
+      action: 'renameTrack',
+      params: { name }
+    };
+    await sendBitwigCommand(renameCommand);
+  }
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: `Created ${type} track`, name } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Rename current track
+app.post('/api/bitwig/tracks/rename', async (req: Request, res: Response) => {
+  const { name } = req.body;
+
+  if (!name) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Name is required',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'renameTrack',
+    params: { name }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: `Renamed track to: ${name}` } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Insert device into current track
+app.post('/api/bitwig/tracks/device', async (req: Request, res: Response) => {
+  const { deviceId, deviceType = 'vst3' } = req.body;
+
+  if (!deviceId) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'deviceId is required',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  if (!['vst3', 'vst2', 'bitwig'].includes(deviceType)) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Invalid deviceType. Must be: vst3, vst2, or bitwig',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'insertDevice',
+    params: { deviceId, deviceType }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: `Inserted device: ${deviceId}` } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Get current track info
+app.get('/api/bitwig/tracks/current', async (_req: Request, res: Response) => {
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'getTrackInfo',
+    params: {}
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.data,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
 });
 
 // SPA fallback - serve index.html for non-API routes

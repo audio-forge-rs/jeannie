@@ -122,3 +122,6 @@ coverage/
 # Instrument documentation (downloaded PDFs, manuals)
 docs/instruments/
 
+# Song projects and compositions (versioned locally, not in git)
+songs/
+

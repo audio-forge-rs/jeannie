@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """
 Roger - Jeannie Bitwig Controller CLI
-Version: 0.3.0
+Vendor: Audio Forge RS
 
 Command-line interface for interacting with Jeannie controller via REST API
+Version is read from /versions.json (single source of truth)
 """
 
 import argparse
@@ -17,7 +18,18 @@ import urllib.request
 import urllib.error
 import urllib.parse
 
-__version__ = '0.3.0'
+# Load version from single source of truth
+def _load_version() -> str:
+    """Load Roger version from versions.json"""
+    try:
+        versions_file = Path(__file__).parent.parent / 'versions.json'
+        with open(versions_file, 'r') as f:
+            versions = json.load(f)
+            return versions.get('roger', '0.9.0')
+    except Exception:
+        return '0.9.0'  # Fallback
+
+__version__ = _load_version()
 __name__ = 'roger'
 
 # Configuration - Cross-platform config path (macOS + Linux)

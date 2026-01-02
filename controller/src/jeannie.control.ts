@@ -1,13 +1,90 @@
 /**
  * Jeannie - Bitwig Studio Controller
- * Version: 0.7.0
  * Vendor: Audio Forge RS
  *
  * Bitwig controller script with content enumeration (devices, presets, samples)
+ * Version is read from ~/.config/jeannie/versions.json (single source of truth)
  */
 
 // Bitwig API type stubs
 declare const loadAPI: (version: number) => void;
+
+// Value types
+interface Value<T> {
+  addValueObserver(callback: (value: T) => void): void;
+  get(): T;
+}
+
+interface SettableValue<T> extends Value<T> {
+  set(value: T): void;
+}
+
+interface StringValue extends Value<string> {}
+interface SettableStringValue extends SettableValue<string> {}
+interface IntegerValue extends Value<number> {}
+interface SettableIntegerValue extends SettableValue<number> {}
+interface BooleanValue extends Value<boolean> {}
+interface SettableBooleanValue extends SettableValue<boolean> {}
+
+// Track and Device interfaces
+interface InsertionPoint {
+  browse(): void;
+  insertBitwigDevice(id: string): void;
+  insertVST2Device(id: number): void;
+  insertVST3Device(id: string): void;
+}
+
+interface DeviceChain {
+  startOfDeviceChainInsertionPoint(): InsertionPoint;
+  endOfDeviceChainInsertionPoint(): InsertionPoint;
+}
+
+interface Channel {
+  name(): SettableStringValue;
+  color(): SettableValue<any>;
+  solo(): SettableBooleanValue;
+  mute(): SettableBooleanValue;
+  volume(): SettableValue<any>;
+  pan(): SettableValue<any>;
+  exists(): BooleanValue;
+  position(): IntegerValue;
+  makeVisibleInArranger(): void;
+  makeVisibleInMixer(): void;
+}
+
+interface Track extends Channel {
+  createCursorDevice(id?: string, name?: string, numSends?: number, followMode?: any): CursorDevice;
+  deviceChain(): DeviceChain;
+}
+
+interface CursorTrack extends Track {
+  selectParent(): void;
+  selectFirstChild(): void;
+  selectNext(): void;
+  selectPrevious(): void;
+}
+
+interface CursorDevice {
+  exists(): BooleanValue;
+  name(): StringValue;
+  presetName(): StringValue;
+  afterDeviceInsertionPoint(): InsertionPoint;
+  beforeDeviceInsertionPoint(): InsertionPoint;
+}
+
+interface TrackBank {
+  getItemAt(index: number): Track;
+  itemCount(): IntegerValue;
+  scrollPosition(): SettableIntegerValue;
+}
+
+interface Application {
+  createAudioTrack(position: number): void;
+  createInstrumentTrack(position: number): void;
+  createEffectTrack(position: number): void;
+  getAction(id: string): any;
+}
+
 declare const host: {
   defineController: (
     vendor: string,
@@ -20,12 +97,13 @@ declare const host: {
   println: (message: string) => void;
   scheduleTask: (callback: () => void, delayMs: number) => void;
   createPopupBrowser: () => any;
+  createCursorTrack(id: string, name: string, numSends: number, numScenes: number, shouldFollowSelection: boolean): CursorTrack;
+  createMainTrackBank(numTracks: number, numSends: number, numScenes: number): TrackBank;
+  getApplication(): Application;
 };
 
 // Java interop for file I/O (Nashorn provides access to Java classes)
 declare const Java: any;
-
-const JEANNIE_VERSION = '0.7.0';
 
 // Cross-platform paths (macOS + Linux)
 const System = Java.type('java.lang.System');
@@ -34,6 +112,38 @@ const CONFIG_DIR = HOME_DIR + '/.config/jeannie';
 const LOG_FILE = CONFIG_DIR + '/logs/controller.log';
 const CONTENT_FILE = CONFIG_DIR + '/content.json';
 const RESCAN_FLAG = CONFIG_DIR + '/rescan.flag';
+const COMMANDS_FILE = CONFIG_DIR + '/commands.json';
+const RESPONSE_FILE = CONFIG_DIR + '/response.json';
+const VERSIONS_FILE = CONFIG_DIR + '/versions.json';
+
+// Load version from versions.json (single source of truth)
+function loadVersion(): string {
+  try {
+    const File = Java.type('java.io.File');
+    const Scanner = Java.type('java.util.Scanner');
+
+    const file = new File(VERSIONS_FILE);
+    if (!file.exists()) {
+      return '0.9.0'; // Fallback if versions.json not found
+    }
+
+    const scanner = new Scanner(file).useDelimiter('\\Z');
+    const content = scanner.hasNext() ? scanner.next() : '';
+    scanner.close();
+
+    const versions = JSON.parse(content);
+    return versions.controller || '0.9.0';
+  } catch (e) {
+    return '0.9.0'; // Fallback on error
+  }
+}
+
+const JEANNIE_VERSION = loadVersion();
+
+// Track management globals (initialized in init())
+let cursorTrack: CursorTrack;
+let trackBank: TrackBank;
+let application: Application;
 
 loadAPI(18);
 
@@ -293,6 +403,220 @@ function checkRescanFlag(): void {
   }
 }
 
+// =============================================================================
+// Track Management
+// =============================================================================
+
+interface TrackCommand {
+  id: string;
+  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo';
+  params: {
+    type?: 'instrument' | 'audio' | 'effect';
+    name?: string;
+    position?: number;
+    trackIndex?: number;
+    deviceId?: string;
+    deviceType?: 'vst3' | 'vst2' | 'bitwig';
+  };
+}
+
+interface CommandResponse {
+  id: string;
+  success: boolean;
+  error?: string;
+  data?: any;
+}
+
+// Read JSON file
+function readJSONFile(path: string): any {
+  try {
+    const File = Java.type('java.io.File');
+    const Scanner = Java.type('java.util.Scanner');
+
+    const file = new File(path);
+    if (!file.exists()) {
+      return null;
+    }
+
+    const scanner = new Scanner(file).useDelimiter('\\Z');
+    const content = scanner.hasNext() ? scanner.next() : '';
+    scanner.close();
+
+    return JSON.parse(content);
+  } catch (e) {
+    log('Error reading JSON file: ' + e, 'error');
+    return null;
+  }
+}
+
+// Write command response
+function writeResponse(response: CommandResponse): void {
+  writeJSONFile(RESPONSE_FILE, response);
+}
+
+// Create a new track
+function createTrack(type: 'instrument' | 'audio' | 'effect', position: number = -1): boolean {
+  try {
+    log('Creating ' + type + ' track at position ' + position);
+
+    switch (type) {
+      case 'instrument':
+        application.createInstrumentTrack(position);
+        break;
+      case 'audio':
+        application.createAudioTrack(position);
+        break;
+      case 'effect':
+        application.createEffectTrack(position);
+        break;
+      default:
+        log('Unknown track type: ' + type, 'error');
+        return false;
+    }
+
+    log('Track created successfully');
+    return true;
+  } catch (e) {
+    log('Error creating track: ' + e, 'error');
+    return false;
+  }
+}
+
+// Rename the currently selected track
+function renameTrack(name: string): boolean {
+  try {
+    log('Renaming current track to: ' + name);
+    cursorTrack.name().set(name);
+    log('Track renamed successfully');
+    return true;
+  } catch (e) {
+    log('Error renaming track: ' + e, 'error');
+    return false;
+  }
+}
+
+// Insert device into current track
+function insertDevice(deviceId: string, deviceType: 'vst3' | 'vst2' | 'bitwig'): boolean {
+  try {
+    log('Inserting device: ' + deviceId + ' (type: ' + deviceType + ')');
+
+    const cursorDevice = cursorTrack.createCursorDevice('primary', 'Primary', 0, 'FOLLOW');
+    const insertionPoint = cursorTrack.deviceChain().endOfDeviceChainInsertionPoint();
+
+    switch (deviceType) {
+      case 'vst3':
+        insertionPoint.insertVST3Device(deviceId);
+        break;
+      case 'vst2':
+        insertionPoint.insertVST2Device(parseInt(deviceId));
+        break;
+      case 'bitwig':
+        insertionPoint.insertBitwigDevice(deviceId);
+        break;
+      default:
+        log('Unknown device type: ' + deviceType, 'error');
+        return false;
+    }
+
+    log('Device inserted successfully');
+    return true;
+  } catch (e) {
+    log('Error inserting device: ' + e, 'error');
+    return false;
+  }
+}
+
+// Get info about current track
+function getTrackInfo(): any {
+  try {
+    return {
+      name: cursorTrack.name().get(),
+      position: cursorTrack.position().get(),
+      muted: cursorTrack.mute().get(),
+      soloed: cursorTrack.solo().get()
+    };
+  } catch (e) {
+    log('Error getting track info: ' + e, 'error');
+    return null;
+  }
+}
+
+// Process commands from file
+function processCommands(): void {
+  if (!fileExists(COMMANDS_FILE)) {
+    return;
+  }
+
+  try {
+    const commands = readJSONFile(COMMANDS_FILE);
+    if (!commands || !Array.isArray(commands) || commands.length === 0) {
+      return;
+    }
+
+    log('Processing ' + commands.length + ' command(s)');
+
+    // Process each command
+    for (const cmd of commands) {
+      const response: CommandResponse = {
+        id: cmd.id,
+        success: false
+      };
+
+      try {
+        switch (cmd.action) {
+          case 'createTrack':
+            response.success = createTrack(
+              cmd.params.type || 'instrument',
+              cmd.params.position !== undefined ? cmd.params.position : -1
+            );
+            break;
+
+          case 'renameTrack':
+            if (cmd.params.name) {
+              response.success = renameTrack(cmd.params.name);
+            } else {
+              response.error = 'Missing name parameter';
+            }
+            break;
+
+          case 'insertDevice':
+            if (cmd.params.deviceId && cmd.params.deviceType) {
+              response.success = insertDevice(cmd.params.deviceId, cmd.params.deviceType);
+            } else {
+              response.error = 'Missing deviceId or deviceType parameter';
+            }
+            break;
+
+          case 'getTrackInfo':
+            const info = getTrackInfo();
+            if (info) {
+              response.success = true;
+              response.data = info;
+            } else {
+              response.error = 'Failed to get track info';
+            }
+            break;
+
+          default:
+            response.error = 'Unknown action: ' + cmd.action;
+        }
+      } catch (e) {
+        response.error = 'Command execution error: ' + e;
+      }
+
+      // Write response
+      writeResponse(response);
+      log('Command ' + cmd.id + ' completed: ' + (response.success ? 'success' : response.error));
+    }
+
+    // Delete commands file after processing
+    deleteFile(COMMANDS_FILE);
+
+  } catch (e) {
+    log('Error processing commands: ' + e, 'error');
+  }
+}
+
 function init(): void {
   log('='.repeat(60));
   log('Jeannie v' + JEANNIE_VERSION + ' by Audio Forge RS');
@@ -392,6 +716,55 @@ function init(): void {
     checkRescanFlag();
     host.scheduleTask(checkFlag, 10000);
   }, 10000);
+
+  // ==========================================================================
+  // Track Management Initialization
+  // ==========================================================================
+  try {
+    log('Initializing track management...');
+
+    // Get application for creating tracks
+    application = host.getApplication();
+    log('Application API initialized');
+
+    // Create cursor track for track selection and manipulation
+    cursorTrack = host.createCursorTrack('jeannie-cursor', 'Jeannie Cursor', 0, 0, true);
+    log('Cursor track initialized');
+
+    // Create track bank for accessing multiple tracks
+    trackBank = host.createMainTrackBank(16, 0, 0);
+    log('Track bank initialized (16 tracks)');
+
+    // Subscribe to track name changes
+    cursorTrack.name().addValueObserver((name: string) => {
+      log('Selected track: ' + name);
+    });
+
+    // Subscribe to track position changes
+    cursorTrack.position().addValueObserver((pos: number) => {
+      log('Track position: ' + pos);
+    });
+
+    log('Track management ready!');
+    log('Commands file: ' + COMMANDS_FILE);
+    log('Response file: ' + RESPONSE_FILE);
+
+  } catch (e) {
+    log('ERROR: Failed to initialize track management: ' + e, 'error');
+  }
+
+  // Process commands every 500ms
+  host.scheduleTask(function processLoop() {
+    processCommands();
+    host.scheduleTask(processLoop, 500);
+  }, 1000);
+
+  log('='.repeat(60));
+  log('Jeannie controller fully initialized');
+  log('Track creation: application.createInstrumentTrack()');
+  log('Track naming: cursorTrack.name().set()');
+  log('Device insertion: insertionPoint.insertVST3Device()');
+  log('='.repeat(60));
 }
 
 function exit(): void {

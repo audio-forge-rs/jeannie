@@ -1,8 +1,9 @@
 /**
  * Jeannie - Content Search Index
- * Version: 0.7.0
+ * Version: 0.8.0
  *
  * Provides fast searchable access to all Bitwig content (devices, presets, samples)
+ * Supports genre-based filtering, vibe tags, and MIDI range queries.
  */
 
 import fs from 'fs';
@@ -30,6 +31,33 @@ export interface ContentItem {
   collection?: string;
   cptId?: string;
   tapes?: string[];
+  // Enhanced metadata
+  quality?: {
+    trustworthiness: number;
+    professionalism: number;
+    generalAppeal: number;
+  };
+  vibe?: string[];
+  genres?: Record<string, number>;
+  midi?: {
+    playableRange: { low: string; high: string };
+    keyswitches?: {
+      range: { low: string; high: string };
+      articulations: Record<string, string>;
+    };
+    ccMappings?: Record<number, string>;
+  };
+  playingModes?: {
+    available: string[];
+    default: string;
+    switchMethod?: string;
+    switchNote?: string;
+    switchCC?: number;
+  };
+  strumBehavior?: {
+    type: string;
+    description: string;
+  };
 }
 
 export interface ContentIndex {
@@ -54,6 +82,12 @@ export interface SearchFilters {
   creator?: string;
   category?: string;
   plugin?: string;
+  // Enhanced filters
+  genre?: string;           // Filter by genre suitability
+  minGenreScore?: number;   // Minimum genre score (default 50)
+  vibe?: string;            // Filter by vibe tag
+  playingMode?: string;     // Filter by supported playing mode
+  hasStrumBehavior?: boolean; // Filter for strum/pattern instruments
 }
 
 export interface SearchResult {
@@ -67,6 +101,11 @@ export class ContentSearchIndex {
   private typeIndex: Map<string, number[]> = new Map();
   private creatorIndex: Map<string, number[]> = new Map();
   private categoryIndex: Map<string, number[]> = new Map();
+  // Enhanced indexes
+  private genreIndex: Map<string, Map<number, number>> = new Map(); // genre -> (itemIndex -> score)
+  private vibeIndex: Map<string, number[]> = new Map();
+  private playingModeIndex: Map<string, number[]> = new Map();
+  private strumBehaviorIndex: number[] = [];
 
   /**
    * Load content index from file
@@ -112,6 +151,10 @@ export class ContentSearchIndex {
     this.typeIndex.clear();
     this.creatorIndex.clear();
     this.categoryIndex.clear();
+    this.genreIndex.clear();
+    this.vibeIndex.clear();
+    this.playingModeIndex.clear();
+    this.strumBehaviorIndex = [];
 
     // Build indexes
     this.index.content.forEach((item, idx) => {
@@ -146,9 +189,46 @@ export class ContentSearchIndex {
         }
         this.categoryIndex.get(item.category)!.push(idx);
       }
+
+      // Genre index (with scores)
+      if (item.genres) {
+        for (const [genre, score] of Object.entries(item.genres)) {
+          if (score > 0) {
+            if (!this.genreIndex.has(genre)) {
+              this.genreIndex.set(genre, new Map());
+            }
+            this.genreIndex.get(genre)!.set(idx, score);
+          }
+        }
+      }
+
+      // Vibe index
+      if (item.vibe) {
+        for (const vibe of item.vibe) {
+          if (!this.vibeIndex.has(vibe)) {
+            this.vibeIndex.set(vibe, []);
+          }
+          this.vibeIndex.get(vibe)!.push(idx);
+        }
+      }
+
+      // Playing mode index
+      if (item.playingModes?.available) {
+        for (const mode of item.playingModes.available) {
+          if (!this.playingModeIndex.has(mode)) {
+            this.playingModeIndex.set(mode, []);
+          }
+          this.playingModeIndex.get(mode)!.push(idx);
+        }
+      }
+
+      // Strum behavior index
+      if (item.strumBehavior) {
+        this.strumBehaviorIndex.push(idx);
+      }
     });
 
-    console.log(`[ContentSearch] Built indexes: ${this.tokenIndex.size} tokens, ${this.typeIndex.size} types, ${this.creatorIndex.size} creators`);
+    console.log(`[ContentSearch] Built indexes: ${this.tokenIndex.size} tokens, ${this.typeIndex.size} types, ${this.creatorIndex.size} creators, ${this.genreIndex.size} genres, ${this.vibeIndex.size} vibes`);
   }
 
   /**
@@ -296,6 +376,65 @@ export class ContentSearchIndex {
       }
     }
 
+    // Apply genre filter with minimum score
+    if (filters?.genre) {
+      const minScore = filters.minGenreScore ?? 50;
+      const genreMap = this.genreIndex.get(filters.genre);
+
+      if (genreMap) {
+        const genreMatches = new Set<number>();
+        genreMap.forEach((score, idx) => {
+          if (score >= minScore) {
+            genreMatches.add(idx);
+          }
+        });
+
+        if (candidateIndexes) {
+          candidateIndexes = new Set([...candidateIndexes].filter(x => genreMatches.has(x)));
+        } else {
+          candidateIndexes = genreMatches;
+        }
+      } else {
+        // No items match this genre
+        candidateIndexes = new Set();
+      }
+    }
+
+    // Apply vibe filter
+    if (filters?.vibe) {
+      const vibeMatches = this.vibeIndex.get(filters.vibe) || [];
+      const vibeSet = new Set(vibeMatches);
+
+      if (candidateIndexes) {
+        candidateIndexes = new Set([...candidateIndexes].filter(x => vibeSet.has(x)));
+      } else {
+        candidateIndexes = vibeSet;
+      }
+    }
+
+    // Apply playing mode filter
+    if (filters?.playingMode) {
+      const modeMatches = this.playingModeIndex.get(filters.playingMode) || [];
+      const modeSet = new Set(modeMatches);
+
+      if (candidateIndexes) {
+        candidateIndexes = new Set([...candidateIndexes].filter(x => modeSet.has(x)));
+      } else {
+        candidateIndexes = modeSet;
+      }
+    }
+
+    // Apply strum behavior filter
+    if (filters?.hasStrumBehavior) {
+      const strumSet = new Set(this.strumBehaviorIndex);
+
+      if (candidateIndexes) {
+        candidateIndexes = new Set([...candidateIndexes].filter(x => strumSet.has(x)));
+      } else {
+        candidateIndexes = strumSet;
+      }
+    }
+
     // If no filters applied, return all indexes
     if (!candidateIndexes) {
       candidateIndexes = new Set(this.index.content.map((_, idx) => idx));
@@ -360,6 +499,135 @@ export class ContentSearchIndex {
    */
   getCategories(): string[] {
     return Array.from(this.categoryIndex.keys()).sort();
+  }
+
+  /**
+   * Get all available genres
+   */
+  getGenres(): string[] {
+    return Array.from(this.genreIndex.keys()).sort();
+  }
+
+  /**
+   * Get all available vibes
+   */
+  getVibes(): string[] {
+    return Array.from(this.vibeIndex.keys()).sort();
+  }
+
+  /**
+   * Get all available playing modes
+   */
+  getPlayingModes(): string[] {
+    return Array.from(this.playingModeIndex.keys()).sort();
+  }
+
+  /**
+   * Search by genre, sorted by genre suitability score
+   */
+  searchByGenre(genre: string, query?: string, minScore: number = 50): SearchResult[] {
+    if (!this.index) return [];
+
+    const genreMap = this.genreIndex.get(genre);
+    if (!genreMap) return [];
+
+    // Get all items with this genre above minimum score
+    const candidates: { idx: number; genreScore: number }[] = [];
+    genreMap.forEach((score, idx) => {
+      if (score >= minScore) {
+        candidates.push({ idx, genreScore: score });
+      }
+    });
+
+    // If query provided, filter by text search
+    if (query) {
+      const queryTokens = this.tokenize(query);
+      const results: SearchResult[] = [];
+
+      for (const { idx, genreScore } of candidates) {
+        const item = this.index.content[idx];
+        const allTokens = new Set([
+          ...item.nameTokens,
+          ...(item.creator ? this.tokenize(item.creator) : []),
+          ...(item.category ? this.tokenize(item.category) : []),
+          ...(item.collection ? this.tokenize(item.collection) : []),
+          ...(item.library ? this.tokenize(item.library) : []),
+          ...(item.plugin ? this.tokenize(item.plugin) : [])
+        ]);
+
+        const matchCount = queryTokens.filter(qt => allTokens.has(qt)).length;
+        if (matchCount > 0) {
+          // Combined score: text match + genre score bonus
+          const textScore = matchCount / queryTokens.length;
+          const combinedScore = textScore * 0.5 + (genreScore / 100) * 0.5;
+          results.push({ item, score: combinedScore });
+        }
+      }
+
+      return results.sort((a, b) => b.score - a.score);
+    }
+
+    // No query, just return sorted by genre score
+    return candidates
+      .sort((a, b) => b.genreScore - a.genreScore)
+      .map(({ idx, genreScore }) => ({
+        item: this.index!.content[idx],
+        score: genreScore / 100
+      }));
+  }
+
+  /**
+   * Find instruments suitable for a specific use case
+   * Returns items sorted by combined score of genre match and quality
+   */
+  findInstrumentsForGenre(
+    genre: string,
+    options: {
+      minScore?: number;
+      vibe?: string;
+      playingMode?: string;
+      limit?: number;
+    } = {}
+  ): SearchResult[] {
+    const { minScore = 70, vibe, playingMode, limit = 20 } = options;
+
+    const filters: SearchFilters = {
+      genre,
+      minGenreScore: minScore,
+      vibe,
+      playingMode
+    };
+
+    const candidateIndexes = this.applyFilters(filters);
+    const genreMap = this.genreIndex.get(genre);
+
+    if (!genreMap || !this.index) return [];
+
+    const results: SearchResult[] = [];
+
+    candidateIndexes.forEach(idx => {
+      const item = this.index!.content[idx];
+      const genreScore = genreMap.get(idx) || 0;
+
+      // Calculate combined score
+      let score = genreScore / 100;
+
+      // Boost by quality if available
+      if (item.quality) {
+        const qualityAvg = (
+          item.quality.trustworthiness +
+          item.quality.professionalism +
+          item.quality.generalAppeal
+        ) / 300;
+        score = score * 0.7 + qualityAvg * 0.3;
+      }
+
+      results.push({ item, score });
+    });
+
+    return results
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit);
   }
 
   /**

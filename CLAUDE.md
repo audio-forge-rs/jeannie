@@ -7,7 +7,7 @@
 - **Web Server & API**: Node.js/Express REST API with real-time web interface
 - **Roger CLI**: Python command-line tool for configuration and control
 
-**Current Version**: 0.7.0
+**Current Version**: 0.8.0
 **Vendor**: Audio Forge RS
 **Status**: Active Development
 
@@ -25,15 +25,28 @@ jeannie/
 │   ├── src/
 │   │   ├── server.ts           # Express server
 │   │   ├── configWatcher.ts    # YAML file watcher
-│   │   ├── contentSearch.ts    # Content search index
-│   │   ├── filesystemScanner.ts # Filesystem content scanner
+│   │   ├── contentSearch.ts    # Content search index v0.8.0
+│   │   ├── filesystemScanner.ts # Filesystem scanner v0.3.0
+│   │   ├── libraryMetadata.ts  # Library metadata (genres, MIDI, modes)
 │   │   └── scan-filesystem.ts  # Scanner CLI entry point
 │   ├── public/                 # Static web UI
 │   │   ├── index.html
 │   │   ├── app.js             # Vanilla JS SPA
 │   │   └── styles.css
 │   ├── dist/           # Compiled output (gitignored)
-│   └── package.json    # v0.7.0
+│   └── package.json    # v0.8.0
+│
+├── compose/            # ABC → MIDI composition CLI
+│   ├── src/
+│   │   ├── cli.ts              # jeannie-compose entrypoint
+│   │   ├── index.ts            # Module exports
+│   │   ├── abc/
+│   │   │   ├── parser.ts       # ABC notation parser
+│   │   │   ├── validator.ts    # ABC validation
+│   │   │   └── index.ts
+│   │   └── midi/
+│   │       └── index.ts        # MIDI types and conversion (placeholder)
+│   └── package.json    # v0.1.0
 │
 ├── roger/              # Python CLI tool
 │   ├── roger.py        # Main CLI script v0.3.0
@@ -42,13 +55,19 @@ jeannie/
 ├── docs/               # Documentation
 │   └── instruments/    # Downloaded manuals (gitignored)
 │
-├── shared/             # Shared TypeScript types (optional)
-│   ├── src/types.ts
-│   └── package.json
+├── shared/             # Shared TypeScript types
+│   ├── src/types.ts    # Enhanced content types v0.2.0
+│   └── package.json    # v0.2.0
+│
+├── songs/              # Song projects (gitignored, locally versioned)
+│   └── <project>/
+│       ├── song.yaml   # Metadata, version history
+│       ├── versions/   # Version snapshots
+│       └── current/    # Symlinks to latest
 │
 ├── ~/.config/jeannie/  # User data directory
 │   ├── config.yaml     # User configuration
-│   ├── content.json    # Content index (5,373+ items)
+│   ├── content.json    # Content index (5,373+ items with metadata)
 │   ├── rescan.flag     # Rescan trigger
 │   └── logs/
 │       └── controller.log
@@ -108,6 +127,9 @@ Both Bitwig and Roger clients can "ping" the server:
    - Token-based index for fast lookups
    - Fuzzy search with Levenshtein distance
    - Multi-field filtering (contentType, creator, category, plugin)
+   - **Genre filtering**: Search by genre suitability (e.g., `genre=country&minScore=70`)
+   - **Vibe filtering**: Search by character tags (warm, vintage, aggressive, etc.)
+   - **Playing mode filtering**: Filter by poly/mono/legato support
    - **Performance**: <1ms exact, 2ms token search, 10-50ms fuzzy
 
 4. **Rescan Mechanism**:
@@ -132,25 +154,35 @@ GET /api/content/search?q=piano&type=Preset&creator=Native%20Instruments
 
 ## Version Management
 
-**All components independently versioned** following semver (0.x.y for pre-1.0):
+**Single Source of Truth**: All component versions are defined in `/versions.json`:
 
-| Component | Location | Current |
-|-----------|----------|---------|
-| Main | `package.json` | 0.3.0 |
-| Web Server | `web/package.json` | 0.7.0 |
-| Controller | `controller/package.json` | 0.5.1 |
-| Roger | `roger/roger.py __version__` | 0.3.0 |
-| Web UI | `web/public/app.js` | 0.3.0 |
-| JEANNIE_VERSION | `controller/src/jeannie.control.ts` | 0.7.0 |
+```json
+{
+  "main": "0.9.0",
+  "web": "0.9.0",
+  "controller": "0.9.0",
+  "compose": "0.9.0",
+  "shared": "0.9.0",
+  "roger": "0.9.0"
+}
+```
+
+Each component reads its version from this file at runtime:
+- **Web Server**: Reads `versions.web` from `../../versions.json`
+- **Compose CLI**: Reads `versions.compose` from `../../versions.json`
+- **Roger CLI**: Reads `versions.roger` from `../versions.json`
+- **Controller**: Reads `versions.controller` from `~/.config/jeannie/versions.json`
+
+The controller runs in Bitwig's isolated environment, so `npm run build` copies `versions.json` to `~/.config/jeannie/` via the `sync-versions` script.
 
 **Bump Strategy**:
+- Edit `/versions.json` only - this is the single source of truth
+- Run `npm run build` to sync versions to `~/.config/jeannie/`
 - Bump often - every feature or significant fix
-- Keep components in sync when possible
-- Update version constants in source files:
-  - `web/src/server.ts` - `VERSION` constant
-  - `controller/src/jeannie.control.ts` - `JEANNIE_VERSION` constant
-  - `web/public/app.js` - version in header comment
-  - `roger/roger.py` - `__version__` variable
+- All components now share the same version number for simplicity
+
+**Package.json Sync**:
+The `package.json` files should also be updated when bumping versions (for npm compatibility), but the runtime versions come from `versions.json`.
 
 ## Development Workflow
 
@@ -409,10 +441,15 @@ Use simple, consistent naming:
 | GET | `/api/content/search?q=<query>` | Search content (token match) |
 | GET | `/api/content/search?q=<query>&fuzzy=true` | Fuzzy search content |
 | GET | `/api/content/search?q=<query>&type=Preset` | Search specific type |
-| GET | `/api/content/stats` | Content statistics (counts by type/creator) |
+| GET | `/api/content/search?genre=country&minScore=70` | Search by genre suitability |
+| GET | `/api/content/search?vibe=vintage` | Search by vibe/character |
+| GET | `/api/content/search?playingMode=legato` | Search by playing mode |
+| GET | `/api/content/stats` | Content statistics (counts by type/creator/genre) |
 | GET | `/api/content/types` | List all content types (Device, Preset, Sample) |
 | GET | `/api/content/creators` | List all creators/vendors |
 | GET | `/api/content/categories` | List all categories |
+| GET | `/api/content/genres` | List all genres with counts |
+| GET | `/api/content/vibes` | List all vibe tags |
 | GET | `/api/content/status` | Index status (last scan, content count) |
 | POST | `/api/content/rescan` | Trigger content rescan |
 
@@ -907,13 +944,99 @@ jeannie/
 │       └── bass.abc
 ```
 
-### Implementation Phases (Not Yet Started)
+### Implementation Phases
 
-1. **Phase 1**: ABC validation + MIDI conversion CLI
-2. **Phase 2**: Instrument metadata enrichment (genre scores, ranges)
-3. **Phase 3**: Bitwig track creation API
-4. **Phase 4**: Claude Code integration prompts
-5. **Phase 5**: Live MIDI playback option
+1. **Phase 1**: ABC validation + MIDI conversion CLI - **DONE** (compose/src/abc/)
+2. **Phase 2**: Instrument metadata enrichment - **DONE** (libraryMetadata.ts, enhanced types)
+3. **Phase 3**: Bitwig track creation API - **PLANNED**
+4. **Phase 4**: Claude Code integration prompts - **PLANNED**
+5. **Phase 5**: Live MIDI playback option - **PLANNED**
+6. **Phase 6**: Song versioning system - **PLANNED**
+
+### Song Versioning System (Vision)
+
+**Goal**: Allow iterative song development with version history, while Bitwig always has the latest version.
+
+```
+songs/                           # Gitignored directory
+├── honky-tonk-demo/
+│   ├── song.yaml                # Metadata (current version refs)
+│   ├── versions/
+│   │   ├── v001/                # Initial version
+│   │   │   ├── piano.abc
+│   │   │   ├── banjo.abc
+│   │   │   └── bass.abc
+│   │   ├── v002/                # Guitar part changed
+│   │   │   ├── piano.abc        # Unchanged (copy or symlink)
+│   │   │   ├── banjo.abc        # Modified
+│   │   │   └── bass.abc
+│   │   └── v003/                # Reverted banjo to v001
+│   │       ├── piano.abc
+│   │       ├── banjo.abc        # Copied from v001
+│   │       └── bass.abc
+│   └── current/                 # Symlinks to latest version
+│       ├── piano.abc -> ../versions/v003/piano.abc
+│       ├── banjo.abc -> ../versions/v003/banjo.abc
+│       └── bass.abc -> ../versions/v003/bass.abc
+│
+└── another-project/
+    └── ...
+```
+
+**Workflow**:
+```
+User: "Go back to the previous version of the guitar part"
+Claude:
+  1. Identifies current version (v003)
+  2. Finds previous guitar (v002)
+  3. Creates v004 with v003's files but v002's guitar
+  4. Updates current/ symlinks
+  5. Pushes to Bitwig via controller
+```
+
+**Key Features** (to implement):
+- Each version is a snapshot of all parts
+- Can selectively revert individual parts
+- Bitwig always has `current/` loaded
+- Version metadata in `song.yaml`:
+  ```yaml
+  name: Honky Tonk Demo
+  current_version: v003
+  versions:
+    v001:
+      created: 2026-01-02T10:00:00Z
+      note: "Initial version"
+    v002:
+      created: 2026-01-02T11:30:00Z
+      note: "Changed banjo strumming pattern"
+      changes: [banjo]
+    v003:
+      created: 2026-01-02T12:00:00Z
+      note: "Reverted banjo to v001"
+      changes: [banjo]
+      reverted_from: v001
+  ```
+
+**DO NOT IMPLEMENT YET** - Document only for future development.
+
+### Compose CLI Usage
+
+```bash
+# Install dependencies
+cd compose && npm install
+
+# Validate ABC files
+npx ts-node src/cli.ts validate ./song/piano.abc
+
+# Validate directory (check bar counts match)
+npx ts-node src/cli.ts validate ./song/ --bars
+
+# Parse and display structure
+npx ts-node src/cli.ts parse ./song/piano.abc
+
+# Show system info
+npx ts-node src/cli.ts info
+```
 
 ---
 
@@ -924,5 +1047,5 @@ MIT License - See LICENSE file
 ---
 
 **Last Updated**: 2026-01-02
-**Version**: 0.7.0
+**Version**: 0.8.0
 **Maintainer**: Audio Forge RS

@@ -1,20 +1,29 @@
 /**
  * Filesystem Content Scanner
+ * Version: 0.4.0
  *
  * Scans the filesystem for audio plugins, Kontakt libraries, M-Tron patches, etc.
  * Works independently of Bitwig's PopupBrowser API.
+ * Enriches content with library metadata (genres, MIDI specs, playing modes).
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
 import { promisify } from 'util';
 import { parseString } from 'xml2js';
+import {
+  findLibraryMetadata,
+  applyLibraryMetadata,
+  getAllGenres,
+  getAllVibes,
+} from './libraryMetadata';
 
 const readdir = promisify(fs.readdir);
 const readFile = promisify(fs.readFile);
 const stat = promisify(fs.stat);
 const exists = promisify(fs.exists);
 
+// Import types from shared (or define locally for compatibility)
 interface ContentItem {
   index: number;
   contentType: string;
@@ -34,6 +43,33 @@ interface ContentItem {
   collection?: string;
   cptId?: string;
   tapes?: string[];
+  // Enhanced metadata
+  quality?: {
+    trustworthiness: number;
+    professionalism: number;
+    generalAppeal: number;
+  };
+  vibe?: string[];
+  genres?: Record<string, number>;
+  midi?: {
+    playableRange: { low: string; high: string };
+    keyswitches?: {
+      range: { low: string; high: string };
+      articulations: Record<string, string>;
+    };
+    ccMappings?: Record<number, string>;
+  };
+  playingModes?: {
+    available: string[];
+    default: string;
+    switchMethod?: string;
+    switchNote?: string;
+    switchCC?: number;
+  };
+  strumBehavior?: {
+    type: string;
+    description: string;
+  };
 }
 
 interface ScanResult {
@@ -286,6 +322,103 @@ async function findKontaktVersions(): Promise<number[]> {
 }
 
 /**
+ * Check if a directory is likely an NI Kontakt library
+ * Uses multiple heuristics for flexible detection
+ */
+async function isNILibrary(dirPath: string): Promise<boolean> {
+  const dirName = path.basename(dirPath);
+
+  // Check 1: Directory name ends with "Library"
+  if (dirName.endsWith('Library')) {
+    // Verify it's actually an NI library by checking for .nicnt or .nki files
+    const nicntFiles = await findFiles(dirPath, /\.nicnt$/i, 1);
+    if (nicntFiles.length > 0) return true;
+
+    // Check for Instruments folder with .nki files
+    const instrumentsPath = path.join(dirPath, 'Instruments');
+    if (await pathExists(instrumentsPath)) {
+      const nkiFiles = await findFiles(instrumentsPath, /\.nki$/i, 2);
+      if (nkiFiles.length > 0) return true;
+    }
+
+    // Check for .nki files anywhere in directory
+    const nkiFiles = await findFiles(dirPath, /\.nki$/i, 3);
+    if (nkiFiles.length > 0) return true;
+  }
+
+  // Check 2: Has .nicnt file (Native Instruments Content file)
+  const nicntFiles = await findFiles(dirPath, /\.nicnt$/i, 1);
+  if (nicntFiles.length > 0) return true;
+
+  // Check 3: Known NI library patterns
+  const niPatterns = [
+    /^Session Guitarist/i,
+    /^Scarbee/i,
+    /^Abbey Road/i,
+    /^Action Strings/i,
+    /^Damage/i,
+    /^Kinetic/i,
+    /^Kontakt Factory/i,
+    /^Retro Machines/i,
+    /^Session Horns/i,
+    /^Studio Drummer/i,
+    /^Symphony Series/i,
+    /^The Gentleman/i,
+    /^The Giant/i,
+    /^The Grandeur/i,
+    /^The Maverick/i,
+    /^Una Corda/i,
+    /^Vintage Organs/i,
+  ];
+
+  for (const pattern of niPatterns) {
+    if (pattern.test(dirName)) {
+      // Verify with .nki check
+      const nkiFiles = await findFiles(dirPath, /\.nki$/i, 5);
+      if (nkiFiles.length > 0) return true;
+    }
+  }
+
+  return false;
+}
+
+/**
+ * Scan a directory for NI libraries
+ */
+async function scanDirectoryForNILibraries(
+  basePath: string,
+  kontaktVersion: number
+): Promise<ContentItem[]> {
+  const items: ContentItem[] = [];
+
+  if (!await pathExists(basePath)) return items;
+
+  try {
+    const entries = await readdir(basePath, { withFileTypes: true });
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+
+      // Skip known non-library directories
+      const skipDirs = ['Documents', 'SC Info', 'Relocated Items', 'adi'];
+      if (skipDirs.includes(entry.name)) continue;
+
+      const dirPath = path.join(basePath, entry.name);
+
+      if (await isNILibrary(dirPath)) {
+        console.log(`  Found NI library: ${entry.name}`);
+        const libraryItems = await scanKontaktLibrary(dirPath, kontaktVersion);
+        items.push(...libraryItems);
+      }
+    }
+  } catch (err) {
+    console.error(`Error scanning ${basePath}:`, err);
+  }
+
+  return items;
+}
+
+/**
  * Scan all Kontakt libraries
  */
 async function scanKontaktLibraries(): Promise<ContentItem[]> {
@@ -294,42 +427,48 @@ async function scanKontaktLibraries(): Promise<ContentItem[]> {
 
   console.log(`Found Kontakt versions: ${versions.join(', ')}`);
 
-  const libraryPaths: Array<{path: string, version: number}> = [];
+  const newestVersion = versions[0] || 8;
 
   // Standard factory content paths
   for (const version of versions) {
     const contentPath = `/Library/Application Support/Native Instruments/Kontakt ${version}/Content`;
     if (await pathExists(contentPath)) {
-      libraryPaths.push({ path: contentPath, version });
+      console.log(`Scanning factory content: ${contentPath}`);
+      const libraryItems = await scanKontaktLibrary(contentPath, version);
+      items.push(...libraryItems);
     }
+  }
+
+  // /Users/Shared - common location for NI libraries installed via Native Access
+  console.log(`Scanning /Users/Shared for NI libraries...`);
+  const sharedItems = await scanDirectoryForNILibraries('/Users/Shared', newestVersion);
+  items.push(...sharedItems);
+
+  // NI Resources folder (another common location)
+  const niResourcesPath = '/Users/Shared/NI Resources';
+  if (await pathExists(niResourcesPath)) {
+    console.log(`Scanning NI Resources: ${niResourcesPath}`);
+    const niResourcesItems = await scanDirectoryForNILibraries(niResourcesPath, newestVersion);
+    items.push(...niResourcesItems);
   }
 
   // External drive
   const externalPath = '/Volumes/External/kontakt_libraries';
   if (await pathExists(externalPath)) {
-    try {
-      const libraries = await readdir(externalPath);
-      for (const library of libraries) {
-        const libraryPath = path.join(externalPath, library);
-        const stats = await stat(libraryPath);
-        if (stats.isDirectory()) {
-          // Use the newest Kontakt version for external libraries
-          libraryPaths.push({ path: libraryPath, version: versions[0] || 8 });
-        }
-      }
-    } catch (err) {
-      console.error('Error scanning external Kontakt libraries:', err);
-    }
+    console.log(`Scanning external drive: ${externalPath}`);
+    const externalItems = await scanDirectoryForNILibraries(externalPath, newestVersion);
+    items.push(...externalItems);
   }
 
-  // Scan each library
-  for (const { path: libraryPath, version } of libraryPaths) {
-    console.log(`Scanning Kontakt library: ${libraryPath}`);
-    const libraryItems = await scanKontaktLibrary(libraryPath, version);
-    items.push(...libraryItems);
+  // User's home NI folder
+  const userNIPath = path.join(process.env.HOME || '', 'Documents/Native Instruments');
+  if (await pathExists(userNIPath)) {
+    console.log(`Scanning user NI folder: ${userNIPath}`);
+    const userItems = await scanDirectoryForNILibraries(userNIPath, newestVersion);
+    items.push(...userItems);
   }
 
-  console.log(`Found ${items.length} Kontakt instruments`);
+  console.log(`Found ${items.length} Kontakt instruments total`);
   return items;
 }
 
@@ -369,10 +508,22 @@ export async function scanFilesystem(): Promise<ScanResult> {
   allContent.push(...kontaktItems);
   console.log(`✓ Found ${kontaktItems.length} Kontakt instruments`);
 
-  // Reindex all items
+  // Reindex all items and apply library metadata
+  console.log('\n[5/5] Applying library metadata...');
+  let enrichedCount = 0;
+
   allContent.forEach((item, index) => {
     item.index = index;
+
+    // Apply library metadata
+    const enriched = applyLibraryMetadata(item);
+    if (enriched.genres) {
+      enrichedCount++;
+      Object.assign(item, enriched);
+    }
   });
+
+  console.log(`✓ Enriched ${enrichedCount} items with library metadata`);
 
   // Calculate statistics
   const stats: any = {
@@ -380,7 +531,10 @@ export async function scanFilesystem(): Promise<ScanResult> {
     byFileType: {},
     byPlugin: {},
     byCreator: {},
-    byCategory: {}
+    byCategory: {},
+    byGenre: {},
+    byVibe: {},
+    byPlayingMode: {}
   };
 
   allContent.forEach(item => {
@@ -421,6 +575,38 @@ export async function scanFilesystem(): Promise<ScanResult> {
       }
       stats.byCategory[item.category]++;
     }
+
+    // By genre (count items suitable for each genre)
+    if (item.genres) {
+      for (const [genre, score] of Object.entries(item.genres)) {
+        if (score > 0) {
+          if (!stats.byGenre[genre]) {
+            stats.byGenre[genre] = 0;
+          }
+          stats.byGenre[genre]++;
+        }
+      }
+    }
+
+    // By vibe
+    if (item.vibe) {
+      for (const vibe of item.vibe) {
+        if (!stats.byVibe[vibe]) {
+          stats.byVibe[vibe] = 0;
+        }
+        stats.byVibe[vibe]++;
+      }
+    }
+
+    // By playing mode
+    if (item.playingModes?.available) {
+      for (const mode of item.playingModes.available) {
+        if (!stats.byPlayingMode[mode]) {
+          stats.byPlayingMode[mode] = 0;
+        }
+        stats.byPlayingMode[mode]++;
+      }
+    }
   });
 
   const endTime = Date.now();
@@ -429,11 +615,12 @@ export async function scanFilesystem(): Promise<ScanResult> {
   console.log('\n' + '='.repeat(60));
   console.log('Scan complete!');
   console.log(`Total items: ${allContent.length}`);
+  console.log(`Enriched with metadata: ${enrichedCount}`);
   console.log(`Duration: ${(duration / 1000).toFixed(1)} seconds`);
   console.log('='.repeat(60));
 
   return {
-    version: '0.2.0',
+    version: '0.4.0',
     scanDate: new Date().toISOString(),
     bitwigVersion: 'Filesystem Scanner',
     scanDurationMs: duration,
