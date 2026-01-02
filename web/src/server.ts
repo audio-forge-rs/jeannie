@@ -1,12 +1,14 @@
 /**
  * Jeannie REST API Server
- * Version: 0.1.0
+ * Version: 0.2.0
  *
  * Main server providing REST API for Jeannie Bitwig controller
+ * Now with web UI!
  */
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
+import path from 'path';
 import { ConfigWatcher, CONFIG_PATH, JeannieConfig } from './configWatcher';
 
 interface ApiResponse<T = unknown> {
@@ -26,7 +28,7 @@ interface HealthResponse {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.1.0';
+const VERSION = '0.2.0';
 
 const startTime = Date.now();
 const configWatcher = new ConfigWatcher();
@@ -35,7 +37,11 @@ const configWatcher = new ConfigWatcher();
 app.use(cors());
 app.use(express.json());
 
-// Logging middleware
+// Serve static files from public directory
+const publicPath = path.join(__dirname, '..', 'public');
+app.use(express.static(publicPath));
+
+// Logging middleware (after static to reduce noise)
 app.use((req, _res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
   next();
@@ -128,14 +134,19 @@ app.get('/api/hello', (_req: Request, res: Response) => {
   res.json(response);
 });
 
-// 404 handler
-app.use((_req: Request, res: Response) => {
-  const response: ApiResponse = {
-    success: false,
-    error: 'Endpoint not found',
-    timestamp: new Date().toISOString()
-  };
-  res.status(404).json(response);
+// SPA fallback - serve index.html for non-API routes
+app.get('*', (req: Request, res: Response) => {
+  // Only serve index.html for non-API routes
+  if (!req.path.startsWith('/api') && !req.path.startsWith('/health')) {
+    res.sendFile(path.join(publicPath, 'index.html'));
+  } else {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Endpoint not found',
+      timestamp: new Date().toISOString()
+    };
+    res.status(404).json(response);
+  }
 });
 
 // Start server
@@ -149,10 +160,10 @@ app.listen(PORT, () => {
   console.log('='.repeat(60));
   console.log(`Jeannie REST API Server v${VERSION}`);
   console.log('='.repeat(60));
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`Config file: ${CONFIG_PATH}`);
-  console.log(`Health check: http://localhost:${PORT}/health`);
-  console.log(`Hello endpoint: http://localhost:${PORT}/api/hello`);
+  console.log(`🌐 Web UI: http://localhost:${PORT}`);
+  console.log(`📊 Health: http://localhost:${PORT}/health`);
+  console.log(`👋 API: http://localhost:${PORT}/api/hello`);
+  console.log(`📁 Config: ${CONFIG_PATH}`);
   console.log('='.repeat(60));
 });
 

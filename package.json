@@ -1,6 +1,6 @@
 {
   "name": "jeannie-bitwig-controller",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Jeannie - A Bitwig Studio controller with web interface and Roger CLI integration",
   "scripts": {
     "build": "npm run build:controller && npm run build:web",

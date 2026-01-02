@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jeannie Controller</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>🎛️ Jeannie Controller</h1>
+            <div id="status" class="status"></div>
+        </header>
+
+        <main>
+            <section class="card">
+                <h2>Hello World</h2>
+                <div id="hello-message" class="message">
+                    Loading...
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>Version Info</h2>
+                <div id="version-info" class="info-grid">
+                    <div class="info-item">
+                        <span class="label">Jeannie:</span>
+                        <span id="version-jeannie" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Roger:</span>
+                        <span id="version-roger" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Config:</span>
+                        <span id="version-config" class="value">-</span>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>Configuration</h2>
+                <div id="config-display" class="config-viewer">
+                    <pre id="config-content">Loading...</pre>
+                </div>
+                <div class="config-info">
+                    <small>File: <code>/tmp/jeannie-config.yaml</code></small>
+                    <span id="last-updated" class="timestamp"></span>
+                </div>
+            </section>
+
+            <section class="card">
+                <h2>Server Health</h2>
+                <div id="health-info" class="info-grid">
+                    <div class="info-item">
+                        <span class="label">Status:</span>
+                        <span id="health-status" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Uptime:</span>
+                        <span id="health-uptime" class="value">-</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="label">Config Loaded:</span>
+                        <span id="health-config" class="value">-</span>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>Jeannie Bitwig Controller v0.1.0 | Built with ❤️ and Vanilla JS</p>
+            <p><small>Auto-refreshes every 2 seconds</small></p>
+        </footer>
+    </div>
+
+    <script type="module" src="/app.js"></script>
+</body>
+</html>
