@@ -256,7 +256,7 @@ function finishEnumeration(startTime: number): void {
   const contentIndex = {
     version: '0.2.0',
     scanDate: new Date().toISOString(),
-    bitwigVersion: '5.3.0',
+    bitwigVersion: 'API v18', // Using API version as proxy (Bitwig 5.x uses API v18)
     scanDurationMs: duration,
     contentTypes: Object.keys(stats.byContentType),
     totals: {
@@ -302,33 +302,77 @@ function init(): void {
   // We'll set up the enumeration here and let observers handle async work
   try {
     log('Setting up content enumeration...');
-    log('This will run asynchronously and write to content.json when complete');
+    log('Clearing browser filters and enumerating all content');
 
     const browser = host.createPopupBrowser();
     const startTime = new Date().getTime();
 
+    // CRITICAL: Subscribe to browser to ensure it's active
+    browser.subscribe();
+    log('Subscribed to browser');
+
+    // CRITICAL: Clear all filters first by selecting wildcard items
+    // Without this, the browser may be filtered and show 0 items
+    log('Clearing browser filters...');
+    const deviceCol = browser.deviceColumn();
+    deviceCol.subscribe();
+    const wildcardDevice = deviceCol.getWildcardItem();
+    wildcardDevice.isSelected().set(true);
+
+    const results = browser.resultsColumn();
+    results.subscribe();
+    log('Subscribed to results column');
+
     log('='.repeat(60));
     log('Starting content enumeration...');
-    log('This will take 60-120 seconds...');
+    log('This will take a few seconds...');
     log('='.repeat(60));
 
     isScanning = true;
     allContent = [];
 
-    // Get available content types
-    const contentTypes: string[] = [];
-    browser.contentTypeNames().addValueObserver((types: string[]) => {
-      for (let i = 0; i < types.length; i++) {
-        if (types[i]) {
-          contentTypes.push(types[i]);
-        }
-      }
-      log('Found content types: ' + contentTypes.join(', '));
+    // Get total count
+    results.entryCount().addValueObserver((count: number) => {
+      log('Found ' + count + ' total items in browser');
 
-      // Start enumerating content types
-      host.scheduleTask(() => {
-        enumerateContentTypes(browser, contentTypes, startTime);
-      }, 1000);
+      if (count === 0) {
+        log('No items found - browser may be empty or filtered');
+        finishEnumeration(startTime);
+        return;
+      }
+
+      // Create item bank (limit to 10000 items)
+      const maxItems = Math.min(count, 10000);
+      const bank = results.createItemBank(maxItems);
+      let processedCount = 0;
+
+      log('Creating item bank for ' + maxItems + ' items...');
+
+      for (let i = 0; i < maxItems; i++) {
+        const item = bank.getItemAt(i);
+        const itemIndex = i;
+
+        item.name().addValueObserver((name: string) => {
+          if (name && name !== '') {
+            const contentItem: ContentItem = {
+              index: allContent.length,
+              contentType: 'Unknown', // We don't know the type with this approach
+              name: name,
+              nameTokens: tokenize(name)
+            };
+
+            allContent.push(contentItem);
+          }
+
+          processedCount++;
+          if (processedCount >= maxItems) {
+            // All items processed
+            host.scheduleTask(() => {
+              finishEnumeration(startTime);
+            }, 500);
+          }
+        });
+      }
     });
 
   } catch (e) {

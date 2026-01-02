@@ -139,14 +139,13 @@ function checkBitwigConnection(): void {
     connectionStatus.bitwig.connected = true;
     connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
 
-    // Parse version from log (only if not already cached)
-    if (!connectionStatus.bitwig.controllerVersion) {
-      for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
-        const match = lines[i].match(/Jeannie v([\d.]+)/);
-        if (match) {
-          connectionStatus.bitwig.controllerVersion = match[1];
-          break;
-        }
+    // Parse version from log (always re-parse to ensure accuracy)
+    // Check last 50 lines to ensure we find the version even with verbose logging
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 50); i--) {
+      const match = lines[i].match(/Jeannie v([\d.]+)/);
+      if (match) {
+        connectionStatus.bitwig.controllerVersion = match[1];
+        break;
       }
     }
   } catch {

@@ -346,10 +346,10 @@ class JeannieApp {
             const controllerEl = document.getElementById('version-controller');
             const footerEl = document.getElementById('footer-version');
 
-            const jeannieVer = data.data.jeannie || 'unknown';
-            const rogerVer = data.data.roger || 'unknown';
-            const configVer = data.data.config || 'unknown';
-            const controllerVer = data.data.controller || 'unknown';
+            const jeannieVer = data.data.jeannie || 'Unknown';
+            const rogerVer = data.data.roger || 'Unknown';
+            const configVer = data.data.config || 'Unknown';
+            const controllerVer = data.data.controller || 'Unknown';
 
             if (jeannieEl.textContent !== jeannieVer) jeannieEl.textContent = jeannieVer;
             if (rogerEl.textContent !== rogerVer) rogerEl.textContent = rogerVer;
