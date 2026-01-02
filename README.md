@@ -36,7 +36,8 @@ npm run dev:web
 node web/dist/server.js
 
 # Install Bitwig controller
-cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/"
+mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS"
+cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"
 
 # Use Roger CLI
 python3 roger/roger.py --version

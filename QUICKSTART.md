@@ -94,20 +94,26 @@ python3 roger/roger.py update-config
 
 1. Build Jeannie controller:
 ```bash
-cd controller && npm run build
+npm run build:controller
 ```
 
-2. Copy to Bitwig:
+2. Create vendor folder and install:
 ```bash
 # macOS
-cp dist/jeannie.control.js ~/Documents/Bitwig\ Studio/Controller\ Scripts/
+mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS"
+cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"
 
 # Check other platforms in controller/README.md
 ```
 
 3. In Bitwig Studio:
+   - Restart Bitwig (if already running)
    - Settings > Controllers
-   - Add Controller > Audio Forge RS > Jeannie
+   - Add Controller
+   - Hardware Vendor: **Audio Forge RS**
+   - Product: **Jeannie**
+
+**Note**: The folder "Audio Forge RS" must match the vendor name in the script.
 
 ## Project Structure
 

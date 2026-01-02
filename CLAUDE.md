@@ -139,8 +139,9 @@ python3 roger/roger.py hello
 python3 roger/roger.py update-config
 
 # Install controller in Bitwig
-cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/"
-# Then add in Bitwig: Settings > Controllers > Add Controller
+mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS"
+cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"
+# Then add in Bitwig: Settings > Controllers > Add Controller > Audio Forge RS > Jeannie
 ```
 
 ### Testing
@@ -380,10 +381,11 @@ pkill -f "node.*server.js"
 
 **Bitwig controller not showing**:
 ```bash
-# Verify file exists
-ls -la "$HOME/Documents/Bitwig Studio/Controller Scripts/jeannie.control.js"
+# Verify file exists in vendor folder
+ls -la "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/jeannie.control.js"
 # Check file size (should be ~800 bytes)
-# Restart Bitwig Studio
+# IMPORTANT: Folder name must match vendor name in defineController()
+# Restart Bitwig Studio and check Settings > Controllers > Add Controller
 ```
 
 **Config changes not detected**:
@@ -480,7 +482,7 @@ git ls-files | xargs ls -lh | sort -k5 -h | tail -20
 npm install && npm run build && node web/dist/server.js
 
 # Update Bitwig controller
-npm run build:controller && cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/"
+npm run build:controller && cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"
 
 # Test everything
 curl http://localhost:3000/health && curl http://localhost:3000/api/status && python3 roger/roger.py version
@@ -496,7 +498,7 @@ Add to `~/.zshrc` or `~/.bashrc`:
 ```bash
 alias jeannie-build='cd ~/jeannie && npm run build'
 alias jeannie-start='cd ~/jeannie && node web/dist/server.js'
-alias jeannie-install='cd ~/jeannie && cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/"'
+alias jeannie-install='cd ~/jeannie && mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS" && cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"'
 alias roger='python3 ~/jeannie/roger/roger.py'
 ```
 
