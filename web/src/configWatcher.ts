@@ -1,15 +1,18 @@
 /**
  * YAML Config File Watcher for Jeannie
- * Version: 0.1.0
+ * Version: 0.2.0
  *
- * Watches /tmp/jeannie-config.yaml for changes and parses updates
+ * Watches ~/.config/jeannie/config.yaml for changes and parses updates
  */
 
 import chokidar, { FSWatcher } from 'chokidar';
-import { readFileSync, existsSync } from 'fs';
+import { readFileSync, existsSync, mkdirSync } from 'fs';
+import { homedir } from 'os';
+import { join, dirname } from 'path';
 import YAML from 'yaml';
 
-export const CONFIG_PATH = '/tmp/jeannie-config.yaml';
+// Cross-platform config path (macOS + Linux)
+export const CONFIG_PATH = join(homedir(), '.config', 'jeannie', 'config.yaml');
 
 export interface JeannieConfig {
   version: string;
@@ -64,6 +67,13 @@ export class ConfigWatcher {
   }
 
   public start(): void {
+    // Ensure config directory exists
+    const configDir = dirname(CONFIG_PATH);
+    if (!existsSync(configDir)) {
+      mkdirSync(configDir, { recursive: true });
+      console.log('[ConfigWatcher] Created config directory:', configDir);
+    }
+
     console.log('[ConfigWatcher] Starting watcher for:', CONFIG_PATH);
 
     this.watcher = chokidar.watch(CONFIG_PATH, {

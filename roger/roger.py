@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """
 Roger - Jeannie Bitwig Controller CLI
-Version: 0.1.0
+Version: 0.2.0
 
 Command-line interface for interacting with Jeannie controller via REST API
 """
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -15,12 +16,12 @@ from typing import Dict, Any, Optional
 import urllib.request
 import urllib.error
 
-__version__ = '0.1.0'
+__version__ = '0.2.0'
 __name__ = 'roger'
 
-# Configuration
+# Configuration - Cross-platform config path (macOS + Linux)
 JEANNIE_API_URL = 'http://localhost:3000'
-CONFIG_FILE = '/tmp/jeannie-config.yaml'
+CONFIG_FILE = os.path.join(os.path.expanduser('~'), '.config', 'jeannie', 'config.yaml')
 
 
 class RogerCLI:
@@ -82,8 +83,12 @@ class RogerCLI:
         try:
             import yaml
 
+            # Ensure config directory exists
+            config_dir = os.path.dirname(CONFIG_FILE)
+            os.makedirs(config_dir, exist_ok=True)
+
             config = {
-                'version': '0.1.0',
+                'version': '0.2.0',
                 'roger': {
                     'name': self.name,
                     'version': self.version,
