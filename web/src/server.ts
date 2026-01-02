@@ -1,9 +1,9 @@
 /**
- * Jeannie REST API Server
+ * Jeannie - REST API Server
  * Version: 0.3.0
+ * Vendor: Audio Forge RS
  *
- * Main server providing REST API for Jeannie Bitwig controller
- * Now with web UI and connection status tracking!
+ * Main server providing REST API for Jeannie with web UI and connection status tracking
  */
 
 import express, { Request, Response } from 'express';
@@ -236,7 +236,7 @@ configWatcher.onChange((config) => {
 
 app.listen(PORT, () => {
   console.log('='.repeat(60));
-  console.log(`Jeannie REST API Server v${VERSION}`);
+  console.log(`Jeannie v${VERSION} by Audio Forge RS`);
   console.log('='.repeat(60));
   console.log(`🌐 Web UI: http://localhost:${PORT}`);
   console.log(`📊 Health: http://localhost:${PORT}/health`);

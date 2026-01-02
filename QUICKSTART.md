@@ -1,16 +1,16 @@
-# Jeannie + Roger Quick Start Guide
+# Jeannie Quick Start Guide
 
-## What Was Built
+## What Is Jeannie?
 
-A complete hello world Bitwig controller system with:
-- **Jeannie** (v0.1.0): TypeScript Bitwig controller + REST API web server
+A complete Bitwig Studio controller ecosystem with:
+- **Jeannie** (v0.3.0): TypeScript Bitwig controller + REST API + web dashboard
 - **Roger** (v0.1.0): Python CLI that interacts with Jeannie
 - **Config Watching**: Real-time YAML file monitoring in `/tmp`
 - All components independently versioned and ready for frequent bumps
 
-## Quick Demo (Already Tested!)
+## Quick Demo
 
-### 1. Start the Jeannie Web Server
+### 1. Start Jeannie Web Server
 ```bash
 # Build everything
 npm install
@@ -90,9 +90,9 @@ python3 roger/roger.py config
 python3 roger/roger.py update-config
 ```
 
-## Bitwig Controller Installation
+## Bitwig Installation
 
-1. Build the controller:
+1. Build Jeannie controller:
 ```bash
 cd controller && npm run build
 ```
@@ -107,7 +107,7 @@ cp dist/jeannie.control.js ~/Documents/Bitwig\ Studio/Controller\ Scripts/
 
 3. In Bitwig Studio:
    - Settings > Controllers
-   - Add Controller > Jeannie Controller
+   - Add Controller > Audio Forge RS > Jeannie
 
 ## Project Structure
 
@@ -162,6 +162,7 @@ Built using latest 2025 best practices from:
 
 ---
 
-**Version**: 0.1.0
+**Version**: 0.3.0
 **Last Updated**: 2026-01-02
-**Status**: ✅ Hello World Complete
+**Vendor**: Audio Forge RS
+**Status**: ✅ Production Ready

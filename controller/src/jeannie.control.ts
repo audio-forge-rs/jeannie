@@ -1,8 +1,9 @@
 /**
- * Jeannie Bitwig Controller
+ * Jeannie - Bitwig Studio Controller
  * Version: 0.3.0
+ * Vendor: Audio Forge RS
  *
- * A Bitwig controller that integrates with the Jeannie web API and Roger CLI
+ * Bitwig controller script that integrates with the Jeannie web API and Roger CLI
  */
 
 // Bitwig API type stubs (basic types for hello world)
@@ -26,7 +27,7 @@ loadAPI(18);
 
 host.defineController(
   'Audio Forge RS',
-  'Jeannie Controller',
+  'Jeannie',
   JEANNIE_VERSION,
   '6c7e5d4f-8a9b-4c3d-2e1f-0a9b8c7d6e5f',
   'Audio Forge RS'
@@ -37,17 +38,17 @@ host.addDeviceNameBasedDiscoveryPair(['Jeannie'], ['Jeannie']);
 
 function init(): void {
   host.println('='.repeat(60));
-  host.println('Jeannie Bitwig Controller v' + JEANNIE_VERSION);
+  host.println('Jeannie v' + JEANNIE_VERSION + ' by Audio Forge RS');
   host.println('='.repeat(60));
   host.println('Controller initialized successfully!');
-  host.println('Web API running at: http://localhost:3000');
-  host.println('Config file: /tmp/jeannie-config.yaml');
-  host.println('Use the Roger CLI to interact with Jeannie');
+  host.println('Web API: http://localhost:3000');
+  host.println('Config: /tmp/jeannie-config.yaml');
+  host.println('Use Roger CLI to interact with Jeannie');
   host.println('='.repeat(60));
 }
 
 function exit(): void {
-  host.println('[Jeannie] Controller shutting down...');
+  host.println('[Jeannie] Shutting down...');
 }
 
 function flush(): void {
