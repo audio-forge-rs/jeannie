@@ -333,7 +333,7 @@ app.get('/api/hello', (_req: Request, res: Response) => {
   const response: ApiResponse = {
     success: true,
     data: {
-      message: `Hello from Jeannie! Connected to ${rogerName} v${rogerVersion}`,
+      message: `Hello from Jeannie! Configured for ${rogerName} v${rogerVersion}`,
       jeannie: {
         name: 'jeannie',
         version: VERSION
