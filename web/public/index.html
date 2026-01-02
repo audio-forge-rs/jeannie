@@ -3,97 +3,231 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jeannie</title>
+    <title>Jeannie - Bitwig Content Search</title>
     <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
     <div id="app">
         <header>
-            <h1>🎛️ Jeannie</h1>
-            <div id="status" class="status"></div>
+            <div class="header-content">
+                <h1>🎛️ Jeannie</h1>
+                <div id="status" class="status"></div>
+            </div>
+            <nav class="nav-bar">
+                <button class="nav-btn active" data-view="search">🔍 Search</button>
+                <button class="nav-btn" data-view="status">📊 Status</button>
+                <button class="nav-btn" data-view="stats">📈 Stats</button>
+            </nav>
         </header>
 
         <main>
-            <section class="card">
-                <h2>Hello World</h2>
-                <div id="hello-message" class="message">
-                    Loading...
-                </div>
-            </section>
+            <!-- Search View -->
+            <div id="view-search" class="view active">
+                <section class="card search-section">
+                    <h2>Content Search</h2>
+                    <div class="search-box">
+                        <input
+                            type="text"
+                            id="search-input"
+                            placeholder="Search devices, presets, samples..."
+                            autocomplete="off"
+                        >
+                        <button id="search-btn" class="btn-primary">Search</button>
+                    </div>
 
-            <section class="card">
-                <h2>Version Info</h2>
-                <div id="version-info" class="info-grid">
-                    <div class="info-item">
-                        <span class="label">Jeannie:</span>
-                        <span id="version-jeannie" class="value">-</span>
+                    <div class="search-filters">
+                        <label>
+                            <input type="checkbox" id="fuzzy-search"> Fuzzy search
+                        </label>
+                        <select id="content-type-filter">
+                            <option value="">All Types</option>
+                        </select>
+                        <select id="creator-filter">
+                            <option value="">All Creators</option>
+                        </select>
                     </div>
-                    <div class="info-item">
-                        <span class="label">Roger:</span>
-                        <span id="version-roger" class="value">-</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Config:</span>
-                        <span id="version-config" class="value">-</span>
-                    </div>
-                </div>
-            </section>
 
-            <section class="card">
-                <h2>Configuration</h2>
-                <div id="config-display" class="config-viewer">
-                    <pre id="config-content">Loading...</pre>
-                </div>
-                <div class="config-info">
-                    <small>File: <code>/tmp/jeannie-config.yaml</code></small>
-                    <span id="last-updated" class="timestamp"></span>
-                </div>
-            </section>
+                    <div id="search-results" class="search-results">
+                        <div class="search-placeholder">
+                            <p>🎹 Search your Bitwig content library</p>
+                            <p><small>Devices • Presets • Samples</small></p>
+                        </div>
+                    </div>
+                </section>
+            </div>
 
-            <section class="card">
-                <h2>Server Health</h2>
-                <div id="health-info" class="info-grid">
-                    <div class="info-item">
-                        <span class="label">Status:</span>
-                        <span id="health-status" class="value">-</span>
+            <!-- Status View -->
+            <div id="view-status" class="view">
+                <section class="card">
+                    <h2>System Status</h2>
+                    <div id="hello-message" class="message">
+                        Loading...
                     </div>
-                    <div class="info-item">
-                        <span class="label">Uptime:</span>
-                        <span id="health-uptime" class="value">-</span>
-                    </div>
-                    <div class="info-item">
-                        <span class="label">Config Loaded:</span>
-                        <span id="health-config" class="value">-</span>
-                    </div>
-                </div>
-            </section>
+                </section>
 
-            <section class="card">
-                <h2>Connection Status</h2>
-                <div id="connection-status" class="info-grid">
-                    <div class="info-item">
-                        <span class="label">Bitwig:</span>
-                        <span id="bitwig-status" class="value status-badge">-</span>
+                <section class="card">
+                    <h2>Connection Status</h2>
+                    <div id="connection-status" class="info-grid">
+                        <div class="info-item">
+                            <span class="label">Bitwig:</span>
+                            <span id="bitwig-status" class="value status-badge">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Controller:</span>
+                            <span id="controller-version" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Last Seen:</span>
+                            <span id="bitwig-lastseen" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Roger:</span>
+                            <span id="roger-status" class="value status-badge">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Last Command:</span>
+                            <span id="roger-command" class="value">-</span>
+                        </div>
                     </div>
-                    <div class="info-item">
-                        <span class="label">Last Seen:</span>
-                        <span id="bitwig-lastseen" class="value">-</span>
+                </section>
+
+                <section class="card">
+                    <h2>Content Index Status</h2>
+                    <div id="content-status" class="info-grid">
+                        <div class="info-item">
+                            <span class="label">Index Loaded:</span>
+                            <span id="index-loaded" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Content Count:</span>
+                            <span id="content-count" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Last Scan:</span>
+                            <span id="last-scan" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Actions:</span>
+                            <span class="value">
+                                <button id="rescan-btn" class="btn-small">Rescan</button>
+                            </span>
+                        </div>
                     </div>
-                    <div class="info-item">
-                        <span class="label">Roger:</span>
-                        <span id="roger-status" class="value status-badge">-</span>
+                </section>
+
+                <section class="card">
+                    <h2>Version Info</h2>
+                    <div id="version-info" class="info-grid">
+                        <div class="info-item">
+                            <span class="label">Jeannie:</span>
+                            <span id="version-jeannie" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Roger:</span>
+                            <span id="version-roger" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Config:</span>
+                            <span id="version-config" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Controller:</span>
+                            <span id="version-controller" class="value">-</span>
+                        </div>
                     </div>
-                    <div class="info-item">
-                        <span class="label">Last Command:</span>
-                        <span id="roger-command" class="value">-</span>
+                </section>
+
+                <section class="card">
+                    <h2>Server Health</h2>
+                    <div id="health-info" class="info-grid">
+                        <div class="info-item">
+                            <span class="label">Status:</span>
+                            <span id="health-status" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Uptime:</span>
+                            <span id="health-uptime" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Config Loaded:</span>
+                            <span id="health-config" class="value">-</span>
+                        </div>
                     </div>
-                </div>
-            </section>
+                </section>
+
+                <section class="card">
+                    <h2>Configuration</h2>
+                    <div id="config-display" class="config-viewer">
+                        <pre id="config-content">Loading...</pre>
+                    </div>
+                    <div class="config-info">
+                        <small>File: <code>~/.config/jeannie/config.yaml</code></small>
+                        <span id="last-updated" class="timestamp"></span>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Stats View -->
+            <div id="view-stats" class="view">
+                <section class="card">
+                    <h2>Content Statistics</h2>
+                    <div id="stats-overview" class="stats-overview">
+                        <div class="stat-card">
+                            <div class="stat-value" id="stat-total">-</div>
+                            <div class="stat-label">Total Items</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="stat-devices">-</div>
+                            <div class="stat-label">Devices</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="stat-presets">-</div>
+                            <div class="stat-label">Presets</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="stat-samples">-</div>
+                            <div class="stat-label">Samples</div>
+                        </div>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <h2>By Content Type</h2>
+                    <div id="stats-by-type" class="stats-list">
+                        Loading...
+                    </div>
+                </section>
+
+                <section class="card">
+                    <h2>Top Creators</h2>
+                    <div id="stats-by-creator" class="stats-list">
+                        Loading...
+                    </div>
+                </section>
+
+                <section class="card">
+                    <h2>Scan Information</h2>
+                    <div id="scan-info" class="info-grid">
+                        <div class="info-item">
+                            <span class="label">Last Scan:</span>
+                            <span id="stats-scan-date" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Duration:</span>
+                            <span id="stats-scan-duration" class="value">-</span>
+                        </div>
+                        <div class="info-item">
+                            <span class="label">Bitwig Version:</span>
+                            <span id="stats-bitwig-version" class="value">-</span>
+                        </div>
+                    </div>
+                </section>
+            </div>
         </main>
 
         <footer>
-            <p>Jeannie v0.3.0 | Built with ❤️ and Vanilla JS</p>
-            <p><small>Auto-refreshes every 2 seconds</small></p>
+            <p>Jeannie <span id="footer-version">...</span> | Built with ❤️ and Vanilla JS</p>
+            <p><small>Auto-refreshes every 2 seconds (Status view only)</small></p>
         </footer>
     </div>
 
