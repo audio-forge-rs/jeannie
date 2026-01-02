@@ -19,28 +19,36 @@ jeannie/
 │   ├── src/
 │   │   └── jeannie.control.ts
 │   ├── dist/           # Compiled output (gitignored)
-│   └── package.json    # v0.3.0
+│   └── package.json    # v0.6.0
 │
 ├── web/                # Web server + REST API + UI
 │   ├── src/
 │   │   ├── server.ts           # Express server
-│   │   └── configWatcher.ts    # YAML file watcher
+│   │   ├── configWatcher.ts    # YAML file watcher
+│   │   └── deviceSearch.ts     # Device search index
 │   ├── public/                 # Static web UI
 │   │   ├── index.html
 │   │   ├── app.js             # Vanilla JS SPA
 │   │   └── styles.css
 │   ├── dist/           # Compiled output (gitignored)
-│   └── package.json    # v0.3.0
+│   └── package.json    # v0.7.0
 │
 ├── roger/              # Python CLI tool
-│   ├── roger.py        # Main CLI script
+│   ├── roger.py        # Main CLI script v0.2.0
 │   └── requirements.txt
 │
 ├── shared/             # Shared TypeScript types (optional)
 │   ├── src/types.ts
 │   └── package.json
 │
-└── /tmp/jeannie-config.yaml  # Runtime config file
+├── ~/.config/jeannie/  # User data directory
+│   ├── config.yaml     # User configuration
+│   ├── devices.json    # Device index (10MB)
+│   ├── rescan.flag     # Rescan trigger
+│   └── logs/
+│       └── controller.log
+│
+└── ARCHITECTURE.md     # Detailed architecture docs
 ```
 
 ## Key Concepts
@@ -67,10 +75,42 @@ jeannie/
 ### Connection Status Tracking
 
 Both Bitwig and Roger clients can "ping" the server:
-- **Bitwig**: `POST /api/bitwig/ping` with version
+- **Bitwig**: Event-driven monitoring (process check + log file watching)
 - **Roger**: `POST /api/roger/command` with command name
 - **Status**: `GET /api/status` returns connection state
-- Auto-disconnects after 30 seconds of inactivity
+- Auto-disconnects after 30 seconds of inactivity (Roger only)
+- Bitwig status based on process running + log file existence
+
+### Device Index System
+
+**Searchable device database** for instant access to all Bitwig plugins:
+
+1. **Enumeration** (Controller on init, ~30-60s):
+   - Scans all devices via PopupBrowser API
+   - Captures: name, type, fileType, creator, category
+   - Writes to `~/.config/jeannie/devices.json` (~10MB for 10k devices)
+
+2. **Search Index** (Web server in memory, ~5MB):
+   - Token-based index for fast lookups
+   - Fuzzy search with Levenshtein distance
+   - Multi-field filtering (type, creator, category)
+   - **Performance**: 1-2ms exact, 10-50ms fuzzy
+
+3. **Rescan Mechanism**:
+   - Create `~/.config/jeannie/rescan.flag` to trigger
+   - Controller checks every 10 seconds
+   - Automatic rescan on Bitwig restart
+   - Endpoints: `POST /api/devices/rescan`
+   - CLI: `roger devices rescan`
+
+**Example Search**:
+```bash
+# Fuzzy search for "acoustic snare"
+GET /api/devices/search?q=acoustic+snare&fuzzy=true
+# Returns: 25 matching devices in ~2ms
+```
+
+**See ARCHITECTURE.md** for complete technical details
 
 ## Version Management
 
@@ -325,10 +365,24 @@ Use simple, consistent naming:
 | GET | `/api/hello` | Hello world with versions |
 | GET | `/api/version` | All component versions |
 | GET | `/api/config` | Current config |
-| GET | `/api/status` | Connection status |
+| GET | `/api/status` | Connection status (Bitwig + Roger) |
 | GET | `/api/roger` | Roger info from config |
-| POST | `/api/bitwig/ping` | Bitwig heartbeat |
+| POST | `/api/bitwig/ping` | Bitwig heartbeat (deprecated - uses process check now) |
+| POST | `/api/bitwig/log` | Bitwig log forwarding |
 | POST | `/api/roger/command` | Roger command tracking |
+
+### Device Index Endpoints
+
+| Method | Endpoint | Purpose |
+|--------|----------|---------|
+| GET | `/api/devices` | List all devices (paginated) |
+| GET | `/api/devices/search?q=<query>` | Search devices (exact match) |
+| GET | `/api/devices/search?q=<query>&fuzzy=true` | Fuzzy search devices |
+| GET | `/api/devices/stats` | Device statistics (counts by type/creator) |
+| GET | `/api/devices/types` | List all device types |
+| GET | `/api/devices/creators` | List all creators/vendors |
+| GET | `/api/devices/status` | Index status (last scan, device count) |
+| POST | `/api/devices/rescan` | Trigger device rescan |
 
 ### Response Format
 
