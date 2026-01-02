@@ -60,10 +60,16 @@ class JeannieApp {
         const messageEl = document.getElementById('hello-message');
 
         if (data?.success && data.data) {
-            messageEl.textContent = data.data.message;
+            // Only update if changed (prevents selection clearing)
+            if (messageEl.textContent !== data.data.message) {
+                messageEl.textContent = data.data.message;
+            }
             messageEl.className = 'message';
         } else {
-            messageEl.textContent = 'Unable to load hello message';
+            const errorMsg = 'Unable to load hello message';
+            if (messageEl.textContent !== errorMsg) {
+                messageEl.textContent = errorMsg;
+            }
             messageEl.className = 'message status-error';
         }
     }
@@ -72,9 +78,18 @@ class JeannieApp {
         const data = await this.fetchAPI('/api/version');
 
         if (data?.success && data.data) {
-            document.getElementById('version-jeannie').textContent = data.data.jeannie || 'unknown';
-            document.getElementById('version-roger').textContent = data.data.roger || 'unknown';
-            document.getElementById('version-config').textContent = data.data.config || 'unknown';
+            const jeannieEl = document.getElementById('version-jeannie');
+            const rogerEl = document.getElementById('version-roger');
+            const configEl = document.getElementById('version-config');
+
+            // Only update if changed (prevents selection clearing)
+            const jeannieVer = data.data.jeannie || 'unknown';
+            const rogerVer = data.data.roger || 'unknown';
+            const configVer = data.data.config || 'unknown';
+
+            if (jeannieEl.textContent !== jeannieVer) jeannieEl.textContent = jeannieVer;
+            if (rogerEl.textContent !== rogerVer) rogerEl.textContent = rogerVer;
+            if (configEl.textContent !== configVer) configEl.textContent = configVer;
         }
     }
 

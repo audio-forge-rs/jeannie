@@ -33,7 +33,7 @@ interface HealthResponse {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.5.0';
+const VERSION = '0.6.0';
 
 const startTime = Date.now();
 const configWatcher = new ConfigWatcher();
