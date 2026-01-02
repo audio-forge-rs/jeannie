@@ -378,7 +378,9 @@ export async function scanFilesystem(): Promise<ScanResult> {
   const stats: any = {
     byContentType: {},
     byFileType: {},
-    byPlugin: {}
+    byPlugin: {},
+    byCreator: {},
+    byCategory: {}
   };
 
   allContent.forEach(item => {
@@ -402,6 +404,22 @@ export async function scanFilesystem(): Promise<ScanResult> {
         stats.byPlugin[item.plugin] = 0;
       }
       stats.byPlugin[item.plugin]++;
+    }
+
+    // By creator
+    if (item.creator) {
+      if (!stats.byCreator[item.creator]) {
+        stats.byCreator[item.creator] = 0;
+      }
+      stats.byCreator[item.creator]++;
+    }
+
+    // By category
+    if (item.category) {
+      if (!stats.byCategory[item.category]) {
+        stats.byCategory[item.category] = 0;
+      }
+      stats.byCategory[item.category]++;
     }
   });
 

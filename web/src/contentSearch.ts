@@ -20,7 +20,16 @@ export interface ContentItem {
   creator?: string;
   category?: string;
   plugin?: string;
+  path?: string;
   nameTokens: string[];
+  // Kontakt-specific
+  library?: string;
+  requiresFullKontakt?: boolean;
+  kontaktVersion?: number;
+  // M-Tron-specific
+  collection?: string;
+  cptId?: string;
+  tapes?: string[];
 }
 
 export interface ContentIndex {
@@ -172,10 +181,19 @@ export class ContentSearchIndex {
     // Find items that match ALL query tokens
     candidateIndexes.forEach(idx => {
       const item = this.index!.content[idx];
-      const itemTokens = new Set(item.nameTokens);
+
+      // Combine tokens from name and metadata fields for richer search
+      const allTokens = new Set([
+        ...item.nameTokens,
+        ...(item.creator ? this.tokenize(item.creator) : []),
+        ...(item.category ? this.tokenize(item.category) : []),
+        ...(item.collection ? this.tokenize(item.collection) : []),
+        ...(item.library ? this.tokenize(item.library) : []),
+        ...(item.plugin ? this.tokenize(item.plugin) : [])
+      ]);
 
       // Check if all query tokens are present
-      const matchCount = queryTokens.filter(qt => itemTokens.has(qt)).length;
+      const matchCount = queryTokens.filter(qt => allTokens.has(qt)).length;
 
       if (matchCount > 0) {
         // Score based on percentage of query tokens matched
@@ -200,18 +218,38 @@ export class ContentSearchIndex {
 
     candidateIndexes.forEach(idx => {
       const item = this.index!.content[idx];
-      const nameLower = item.name.toLowerCase();
 
-      // Calculate Levenshtein distance
-      const distance = this.levenshteinDistance(queryLower, nameLower);
+      // Check multiple fields and use the best score
+      const fieldsToSearch = [
+        item.name,
+        item.creator,
+        item.category,
+        item.collection,
+        item.library,
+        item.plugin
+      ].filter(f => f); // Remove undefined/null fields
 
-      // Normalize score (0-1, where 1 is exact match)
-      const maxLen = Math.max(queryLower.length, nameLower.length);
-      const score = 1 - (distance / maxLen);
+      let bestScore = 0;
+
+      for (const field of fieldsToSearch) {
+        if (!field) continue; // Extra safety check
+        const fieldLower = field.toLowerCase();
+
+        // Calculate Levenshtein distance
+        const distance = this.levenshteinDistance(queryLower, fieldLower);
+
+        // Normalize score (0-1, where 1 is exact match)
+        const maxLen = Math.max(queryLower.length, fieldLower.length);
+        const score = 1 - (distance / maxLen);
+
+        if (score > bestScore) {
+          bestScore = score;
+        }
+      }
 
       // Only include results with reasonable similarity (>0.3)
-      if (score > 0.3) {
-        results.push({ item, score });
+      if (bestScore > 0.3) {
+        results.push({ item, score: bestScore });
       }
     });
 
