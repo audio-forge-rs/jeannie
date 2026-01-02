@@ -19,13 +19,15 @@ jeannie/
 │   ├── src/
 │   │   └── jeannie.control.ts
 │   ├── dist/           # Compiled output (gitignored)
-│   └── package.json    # v0.7.0
+│   └── package.json    # v0.5.1
 │
 ├── web/                # Web server + REST API + UI
 │   ├── src/
 │   │   ├── server.ts           # Express server
 │   │   ├── configWatcher.ts    # YAML file watcher
-│   │   └── contentSearch.ts    # Content search index
+│   │   ├── contentSearch.ts    # Content search index
+│   │   ├── filesystemScanner.ts # Filesystem content scanner
+│   │   └── scan-filesystem.ts  # Scanner CLI entry point
 │   ├── public/                 # Static web UI
 │   │   ├── index.html
 │   │   ├── app.js             # Vanilla JS SPA
@@ -37,18 +39,23 @@ jeannie/
 │   ├── roger.py        # Main CLI script v0.3.0
 │   └── requirements.txt
 │
+├── docs/               # Documentation
+│   └── instruments/    # Downloaded manuals (gitignored)
+│
 ├── shared/             # Shared TypeScript types (optional)
 │   ├── src/types.ts
 │   └── package.json
 │
 ├── ~/.config/jeannie/  # User data directory
 │   ├── config.yaml     # User configuration
-│   ├── content.json    # Content index (devices, presets, samples)
+│   ├── content.json    # Content index (5,373+ items)
 │   ├── rescan.flag     # Rescan trigger
 │   └── logs/
 │       └── controller.log
 │
-└── ARCHITECTURE.md     # Detailed architecture docs
+├── INSTRUMENTS.md      # Instrument knowledge base
+├── ARCHITECTURE.md     # Detailed architecture docs
+└── CLAUDE.md           # Development guidelines (this file)
 ```
 
 ## Key Concepts
@@ -131,9 +138,10 @@ GET /api/content/search?q=piano&type=Preset&creator=Native%20Instruments
 |-----------|----------|---------|
 | Main | `package.json` | 0.3.0 |
 | Web Server | `web/package.json` | 0.7.0 |
-| Controller | `controller/package.json` | 0.7.0 |
+| Controller | `controller/package.json` | 0.5.1 |
 | Roger | `roger/roger.py __version__` | 0.3.0 |
 | Web UI | `web/public/app.js` | 0.3.0 |
+| JEANNIE_VERSION | `controller/src/jeannie.control.ts` | 0.7.0 |
 
 **Bump Strategy**:
 - Bump often - every feature or significant fix
@@ -586,6 +594,71 @@ git ls-files | xargs ls -lh | sort -k5 -h | tail -20
 - **Bitwig Control Surface API v18**
 - **TypeScript** - Development
 - **ES5 JavaScript** - Runtime (Bitwig requirement)
+
+## MIDI Note Conventions
+
+### Bitwig Octave Offset (CRITICAL)
+
+**Bitwig uses C3 = Middle C (MIDI note 60)**
+
+This differs from some standards where Middle C is C4 or C5:
+- **Bitwig**: C3 = MIDI 60 = 262 Hz
+- **Bitwig range**: C-2 (MIDI 0) to G8 (MIDI 127)
+
+**Conversion**: When importing from other DAWs, notes may appear 1-2 octaves different.
+
+### Kontakt Keyboard Colors
+- **Blue keys**: Playable instrument range
+- **Red keys**: Keyswitches (articulation control)
+- **Green keys**: Custom keyswitches
+
+**See INSTRUMENTS.md** for complete instrument knowledge base including:
+- MIDI CC mappings per library
+- Keyswitch ranges
+- Genre suitability scores
+- Playable note ranges
+
+---
+
+## Filesystem Scanner
+
+### Overview
+
+The **Filesystem Scanner** is the primary content discovery method (PopupBrowser API returns 0 items).
+
+**Location**: `web/src/filesystemScanner.ts`
+**CLI**: `npm run scan` (from web/ directory)
+**Output**: `~/.config/jeannie/content.json`
+
+### What It Scans
+
+| Content Type | Paths | Items Found |
+|--------------|-------|-------------|
+| VST3 Plugins | `/Library/Audio/Plug-Ins/VST3/`, `~/Library/Audio/Plug-Ins/VST3/` | ~109 |
+| CLAP Plugins | `/Library/Audio/Plug-Ins/CLAP/` | ~2 |
+| M-Tron Patches | `/Library/Application Support/GForce/M-Tron Pro IV/Patches/` | ~3,814 |
+| Kontakt Libraries | `/Library/Application Support/Native Instruments/Kontakt X/Content/`, `/Volumes/External/kontakt_libraries/` | ~1,448 |
+
+**Total**: ~5,373 items in ~4 seconds
+
+### Kontakt Detection
+
+- Detects installed versions (Kontakt 5, 6, 7, 8)
+- Scans `.nki` files for instruments
+- Detects Player vs Full: `.nicnt` file present = Player compatible
+- Scans external volumes automatically
+
+### M-Tron Detection
+
+- Parses XML patch files
+- Extracts: name, creator, category, collection, cptId
+- References `.cpt2` collection files
+
+### Controller Protection
+
+The Bitwig controller will NOT overwrite `content.json` if PopupBrowser returns 0 items. This prevents losing filesystem scanner data.
+
+---
 
 ## Resources & References
 

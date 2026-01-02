@@ -119,3 +119,6 @@ coverage/
 # Misc
 .turbo
 
+# Instrument documentation (downloaded PDFs, manuals)
+docs/instruments/
+
