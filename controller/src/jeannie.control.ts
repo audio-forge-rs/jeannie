@@ -24,11 +24,9 @@ declare const host: {
 // Java interop for file I/O (Nashorn provides access to Java classes)
 declare const Java: any;
 
-const JEANNIE_VERSION = '0.5.0';
+const JEANNIE_VERSION = '0.6.0';
 
 // Cross-platform paths (macOS + Linux)
-// macOS: /Users/username/.config/jeannie/logs/controller.log
-// Linux: /home/username/.config/jeannie/logs/controller.log
 const System = Java.type('java.lang.System');
 const LOG_FILE = System.getProperty('user.home') + '/.config/jeannie/logs/controller.log';
 

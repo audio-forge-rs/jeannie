@@ -55,9 +55,7 @@ export class ConfigWatcher {
       if (existsSync(CONFIG_PATH)) {
         const fileContent = readFileSync(CONFIG_PATH, 'utf8');
         this.config = YAML.parse(fileContent) as JeannieConfig;
-        console.log('[ConfigWatcher] Config loaded:', this.config);
       } else {
-        console.log('[ConfigWatcher] Config file does not exist yet:', CONFIG_PATH);
         this.config = null;
       }
     } catch (error) {
@@ -71,10 +69,7 @@ export class ConfigWatcher {
     const configDir = dirname(CONFIG_PATH);
     if (!existsSync(configDir)) {
       mkdirSync(configDir, { recursive: true });
-      console.log('[ConfigWatcher] Created config directory:', configDir);
     }
-
-    console.log('[ConfigWatcher] Starting watcher for:', CONFIG_PATH);
 
     this.watcher = chokidar.watch(CONFIG_PATH, {
       persistent: true,
@@ -86,18 +81,15 @@ export class ConfigWatcher {
     });
 
     this.watcher
-      .on('add', (path: string) => {
-        console.log('[ConfigWatcher] File created:', path);
+      .on('add', () => {
         this.loadConfig();
         this.notifyCallbacks();
       })
-      .on('change', (path: string) => {
-        console.log('[ConfigWatcher] File changed:', path);
+      .on('change', () => {
         this.loadConfig();
         this.notifyCallbacks();
       })
-      .on('unlink', (path: string) => {
-        console.log('[ConfigWatcher] File removed:', path);
+      .on('unlink', () => {
         this.config = null;
         this.notifyCallbacks();
       })
@@ -110,7 +102,6 @@ export class ConfigWatcher {
     if (this.watcher) {
       this.watcher.close();
       this.watcher = null;
-      console.log('[ConfigWatcher] Watcher stopped');
     }
   }
 

@@ -11,6 +11,8 @@ import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import chokidar, { FSWatcher } from 'chokidar';
+import { execSync } from 'child_process';
 import { ConfigWatcher, CONFIG_PATH, JeannieConfig, ConnectionStatus } from './configWatcher';
 
 // Controller log path for monitoring connection status
@@ -33,7 +35,7 @@ interface HealthResponse {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.6.0';
+const VERSION = '0.7.0';
 
 const startTime = Date.now();
 const configWatcher = new ConfigWatcher();
@@ -79,54 +81,102 @@ function isConnectionStale(lastSeen: string | null): boolean {
   return Date.now() - new Date(lastSeen).getTime() > CONNECTION_TIMEOUT;
 }
 
-// Check Bitwig controller connection by monitoring log file
+// Check if Bitwig process is running
+function isBitwigRunning(): boolean {
+  try {
+    const { execSync } = require('child_process');
+    // Cross-platform process check
+    const cmd = process.platform === 'win32'
+      ? 'tasklist'
+      : 'ps aux';
+    const output = execSync(cmd, { encoding: 'utf8' });
+    return output.includes('Bitwig') || output.includes('BitwigStudio');
+  } catch {
+    return false;
+  }
+}
+
+// Check Bitwig controller connection (process + log file)
 function checkBitwigConnection(): void {
   try {
+    // First check if Bitwig process is running
+    const processRunning = isBitwigRunning();
+
+    if (!processRunning) {
+      connectionStatus.bitwig.connected = false;
+      connectionStatus.bitwig.lastSeen = null;
+      return;
+    }
+
+    // Process running - check if controller log exists and is recent
     if (!fs.existsSync(CONTROLLER_LOG_PATH)) {
       connectionStatus.bitwig.connected = false;
       connectionStatus.bitwig.lastSeen = null;
       return;
     }
 
-    // Check last modified time
+    // Check last modified time (allow up to 2 minutes for init-only logging)
     const stats = fs.statSync(CONTROLLER_LOG_PATH);
     const lastModified = stats.mtime.getTime();
     const now = Date.now();
+    const twoMinutes = 120000;
 
-    // If modified within last 30 seconds, consider connected
-    if (now - lastModified < CONNECTION_TIMEOUT) {
+    if (now - lastModified < twoMinutes) {
       connectionStatus.bitwig.connected = true;
       connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
 
-      // Try to parse version from last log entry
-      try {
-        const logContent = fs.readFileSync(CONTROLLER_LOG_PATH, 'utf8');
-        const lines = logContent.trim().split('\n');
-
-        // Look for version line (usually near the start of a session)
-        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
-          const match = lines[i].match(/Jeannie v([\d.]+)/);
-          if (match) {
-            connectionStatus.bitwig.controllerVersion = match[1];
-            break;
+      // Parse version from log (only if not already cached)
+      if (!connectionStatus.bitwig.controllerVersion) {
+        try {
+          const logContent = fs.readFileSync(CONTROLLER_LOG_PATH, 'utf8');
+          const lines = logContent.trim().split('\n');
+          for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+            const match = lines[i].match(/Jeannie v([\d.]+)/);
+            if (match) {
+              connectionStatus.bitwig.controllerVersion = match[1];
+              break;
+            }
           }
+        } catch {
+          // Ignore parse errors
         }
-      } catch (parseError) {
-        // Ignore parse errors, version stays as-is
       }
     } else {
       connectionStatus.bitwig.connected = false;
       connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
     }
-  } catch (error) {
+  } catch {
     connectionStatus.bitwig.connected = false;
     connectionStatus.bitwig.lastSeen = null;
   }
 }
 
-// Update Bitwig connection status every 5 seconds
-setInterval(checkBitwigConnection, 5000);
-checkBitwigConnection(); // Initial check
+// Event-driven Bitwig connection monitoring (no polling)
+let logWatcher: FSWatcher | null = null;
+
+// Initial check for Bitwig connection
+checkBitwigConnection();
+
+// Watch controller log file for changes (event-driven)
+logWatcher = chokidar.watch(CONTROLLER_LOG_PATH, {
+  persistent: true,
+  ignoreInitial: false,
+  awaitWriteFinish: {
+    stabilityThreshold: 300,
+    pollInterval: 100
+  }
+});
+
+logWatcher
+  .on('add', () => checkBitwigConnection())
+  .on('change', () => checkBitwigConnection())
+  .on('unlink', () => {
+    connectionStatus.bitwig.connected = false;
+    connectionStatus.bitwig.lastSeen = null;
+  });
+
+// Also check connection status every 30 seconds (minimal polling for process check)
+setInterval(checkBitwigConnection, 30000);
 
 // Middleware
 app.use(cors());
@@ -135,12 +185,6 @@ app.use(express.json());
 // Serve static files from public directory
 const publicPath = path.join(__dirname, '..', 'public');
 app.use(express.static(publicPath));
-
-// Logging middleware (after static to reduce noise)
-app.use((req, _res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
-  next();
-});
 
 // Health check endpoint
 app.get('/health', (_req: Request, res: Response) => {
@@ -230,8 +274,6 @@ app.post('/api/bitwig/ping', (req: Request, res: Response) => {
     connectionStatus.bitwig.controllerVersion = version;
   }
 
-  console.log('[Bitwig] Controller ping received, version:', version || 'unknown');
-
   const response: ApiResponse = {
     success: true,
     data: { message: 'Ping received' },
@@ -273,8 +315,6 @@ app.post('/api/roger/command', (req: Request, res: Response) => {
   if (command) {
     connectionStatus.roger.lastCommand = command;
   }
-
-  console.log('[Roger] Command received:', command || 'unknown');
 
   const response: ApiResponse = {
     success: true,
@@ -326,10 +366,6 @@ app.get('*', (req: Request, res: Response) => {
 // Start server
 configWatcher.start();
 
-configWatcher.onChange((config) => {
-  console.log('[Server] Config updated:', config);
-});
-
 app.listen(PORT, () => {
   console.log('='.repeat(60));
   console.log(`Jeannie v${VERSION} by Audio Forge RS`);
@@ -345,5 +381,8 @@ app.listen(PORT, () => {
 process.on('SIGINT', () => {
   console.log('\n[Server] Shutting down gracefully...');
   configWatcher.stop();
+  if (logWatcher) {
+    logWatcher.close();
+  }
   process.exit(0);
 });

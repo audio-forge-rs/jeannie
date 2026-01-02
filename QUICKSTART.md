@@ -3,9 +3,10 @@
 ## What Is Jeannie?
 
 A complete Bitwig Studio controller ecosystem with:
-- **Jeannie** (v0.3.0): TypeScript Bitwig controller + REST API + web dashboard
-- **Roger** (v0.1.0): Python CLI that interacts with Jeannie
-- **Config Watching**: Real-time YAML file monitoring in `/tmp`
+- **Jeannie Controller** (v0.6.0): TypeScript Bitwig controller with Java FileWriter logging
+- **Jeannie Web** (v0.7.0): REST API + web dashboard with event-driven connection monitoring
+- **Roger** (v0.2.0): Python CLI that interacts with Jeannie
+- **Config Watching**: Real-time YAML file monitoring in `~/.config/jeannie/`
 - All components independently versioned and ready for frequent bumps
 
 ## Quick Demo
@@ -37,11 +38,12 @@ pip install pyyaml
 python3 roger/roger.py update-config
 
 # Option 2: Create manually
-cat > /tmp/jeannie-config.yaml << 'EOF'
-version: 0.1.0
+mkdir -p ~/.config/jeannie
+cat > ~/.config/jeannie/config.yaml << 'EOF'
+version: 0.2.0
 roger:
   name: roger
-  version: 0.1.0
+  version: 0.2.0
   timestamp: '2026-01-02T13:24:00.000Z'
 controller:
   name: jeannie
@@ -64,6 +66,8 @@ curl http://localhost:3000/api/hello
 - `GET /api/version` - Version info for all components
 - `GET /api/config` - Current configuration
 - `GET /api/roger` - Roger-specific info from config
+- `GET /api/status` - Connection status for Bitwig and Roger
+- **Web UI**: `http://localhost:3000` - Dashboard with live connection status
 
 ## Roger CLI Commands
 
@@ -140,11 +144,15 @@ All components are at v0.1.0. To bump versions:
 
 ✅ TypeScript compilation for all components
 ✅ REST API server with Express
-✅ YAML config file watching with chokidar
+✅ YAML config file watching with chokidar (event-driven, no polling)
 ✅ Roger CLI with argparse
 ✅ Hello world integration showing Roger's name and version
 ✅ All endpoints returning correct data
-✅ File logging for Bitwig controller
+✅ File logging for Bitwig controller (Java FileWriter)
+✅ Event-driven Bitwig connection monitoring (process + log file watching)
+✅ Production-ready web UI with live connection status
+✅ Clean logging (minimal console output)
+✅ Cross-platform support (macOS + Linux)
 ✅ Git committed and pushed
 
 ## Logging
@@ -181,7 +189,23 @@ Built using latest 2025 best practices from:
 
 ---
 
-**Version**: 0.3.0
+**Version**: 0.7.0
 **Last Updated**: 2026-01-02
 **Vendor**: Audio Forge RS
 **Status**: ✅ Production Ready
+
+## Connection Monitoring
+
+Jeannie v0.7.0 implements event-driven connection monitoring:
+
+**Bitwig Controller Status**:
+- Process monitoring checks if Bitwig is running (ps aux/tasklist)
+- Event-driven log file watching (chokidar) detects controller activity
+- 2-minute tolerance window for init-only logging behavior
+- No polling spam, only responds to actual file changes
+
+**Why it's reliable**:
+- Combines process check + log file monitoring for accuracy
+- Event-driven approach (no constant polling)
+- Minimal server log output for production use
+- Graceful shutdown handling
