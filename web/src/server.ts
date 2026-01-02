@@ -14,9 +14,14 @@ import os from 'os';
 import chokidar, { FSWatcher } from 'chokidar';
 import { execSync } from 'child_process';
 import { ConfigWatcher, CONFIG_PATH, JeannieConfig, ConnectionStatus } from './configWatcher';
+import { ContentSearchIndex, SearchFilters } from './contentSearch';
 
 // Controller log path for monitoring connection status
 const CONTROLLER_LOG_PATH = path.join(os.homedir(), '.config', 'jeannie', 'logs', 'controller.log');
+
+// Content index paths
+const CONTENT_FILE = path.join(os.homedir(), '.config', 'jeannie', 'content.json');
+const RESCAN_FLAG = path.join(os.homedir(), '.config', 'jeannie', 'rescan.flag');
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -39,6 +44,7 @@ const VERSION = '0.7.0';
 
 const startTime = Date.now();
 const configWatcher = new ConfigWatcher();
+const contentSearchIndex = new ContentSearchIndex();
 
 // Connection status tracking
 const connectionStatus: ConnectionStatus = {
@@ -175,6 +181,50 @@ logWatcher
 
 // Also check connection status every 30 seconds (minimal polling for process check)
 setInterval(checkBitwigConnection, 30000);
+
+// Content index file watching (event-driven reload on rescans)
+let contentWatcher: FSWatcher | null = null;
+
+// Load content index on startup
+contentSearchIndex.loadFromFile().then((loaded) => {
+  if (!loaded) {
+    console.log('[ContentSearch] No content index found - run a scan from Bitwig controller');
+  }
+});
+
+// Watch content.json for changes (rescan completion)
+if (fs.existsSync(CONTENT_FILE)) {
+  contentWatcher = chokidar.watch(CONTENT_FILE, {
+    persistent: true,
+    ignoreInitial: false,
+    awaitWriteFinish: {
+      stabilityThreshold: 500,
+      pollInterval: 100
+    }
+  });
+
+  contentWatcher
+    .on('change', () => {
+      console.log('[ContentSearch] Content index changed, reloading...');
+      contentSearchIndex.reload();
+    });
+}
+
+// Helper function to create rescan flag
+function createRescanFlag(): void {
+  try {
+    const flagData = {
+      requestedAt: new Date().toISOString(),
+      requestedBy: 'web-api',
+      reason: 'User requested rescan'
+    };
+    fs.writeFileSync(RESCAN_FLAG, JSON.stringify(flagData, null, 2), 'utf8');
+    console.log('[Rescan] Created rescan flag - controller will detect within 10 seconds');
+  } catch (error) {
+    console.error('[Rescan] Error creating rescan flag:', error);
+    throw error;
+  }
+}
 
 // Middleware
 app.use(cors());
@@ -346,6 +396,227 @@ app.get('/api/hello', (_req: Request, res: Response) => {
   res.json(response);
 });
 
+// Content API endpoints
+
+// Search content
+app.get('/api/content/search', (req: Request, res: Response) => {
+  const query = req.query.q as string;
+  const fuzzy = req.query.fuzzy === 'true';
+  const contentType = req.query.type as string | undefined;
+  const creator = req.query.creator as string | undefined;
+  const category = req.query.category as string | undefined;
+  const limit = parseInt(req.query.limit as string) || 100;
+
+  if (!query) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Query parameter "q" is required',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  if (!contentSearchIndex.isLoaded()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Content index not loaded - run a scan from Bitwig controller',
+      timestamp: new Date().toISOString()
+    };
+    res.status(503).json(response);
+    return;
+  }
+
+  const filters: SearchFilters = {};
+  if (contentType) filters.contentType = contentType;
+  if (creator) filters.creator = creator;
+  if (category) filters.category = category;
+
+  const results = contentSearchIndex.search(query, filters, fuzzy);
+
+  const response: ApiResponse = {
+    success: true,
+    data: {
+      query,
+      fuzzy,
+      filters,
+      total: results.length,
+      results: results.slice(0, limit).map(r => ({
+        ...r.item,
+        score: r.score
+      }))
+    },
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// List content with filters
+app.get('/api/content', (req: Request, res: Response) => {
+  if (!contentSearchIndex.isLoaded()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Content index not loaded - run a scan from Bitwig controller',
+      timestamp: new Date().toISOString()
+    };
+    res.status(503).json(response);
+    return;
+  }
+
+  const contentType = req.query.type as string | undefined;
+  const creator = req.query.creator as string | undefined;
+  const category = req.query.category as string | undefined;
+  const limit = parseInt(req.query.limit as string) || 100;
+  const offset = parseInt(req.query.offset as string) || 0;
+
+  const filters: SearchFilters = {};
+  if (contentType) filters.contentType = contentType;
+  if (creator) filters.creator = creator;
+  if (category) filters.category = category;
+
+  const results = contentSearchIndex.list(filters, limit, offset);
+
+  const response: ApiResponse = {
+    success: true,
+    data: {
+      filters,
+      total: results.length,
+      limit,
+      offset,
+      results
+    },
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Get content statistics
+app.get('/api/content/stats', (_req: Request, res: Response) => {
+  if (!contentSearchIndex.isLoaded()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Content index not loaded - run a scan from Bitwig controller',
+      timestamp: new Date().toISOString()
+    };
+    res.status(503).json(response);
+    return;
+  }
+
+  const stats = contentSearchIndex.getStats();
+
+  const response: ApiResponse = {
+    success: true,
+    data: stats,
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Get content types
+app.get('/api/content/types', (_req: Request, res: Response) => {
+  if (!contentSearchIndex.isLoaded()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Content index not loaded',
+      timestamp: new Date().toISOString()
+    };
+    res.status(503).json(response);
+    return;
+  }
+
+  const response: ApiResponse = {
+    success: true,
+    data: contentSearchIndex.getContentTypes(),
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Get creators
+app.get('/api/content/creators', (_req: Request, res: Response) => {
+  if (!contentSearchIndex.isLoaded()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Content index not loaded',
+      timestamp: new Date().toISOString()
+    };
+    res.status(503).json(response);
+    return;
+  }
+
+  const response: ApiResponse = {
+    success: true,
+    data: contentSearchIndex.getCreators(),
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Get categories
+app.get('/api/content/categories', (_req: Request, res: Response) => {
+  if (!contentSearchIndex.isLoaded()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Content index not loaded',
+      timestamp: new Date().toISOString()
+    };
+    res.status(503).json(response);
+    return;
+  }
+
+  const response: ApiResponse = {
+    success: true,
+    data: contentSearchIndex.getCategories(),
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Get content index status
+app.get('/api/content/status', (_req: Request, res: Response) => {
+  const response: ApiResponse = {
+    success: true,
+    data: contentSearchIndex.getStatus(),
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Trigger content rescan
+app.post('/api/content/rescan', (_req: Request, res: Response) => {
+  try {
+    // Check if Bitwig is running
+    if (!isBitwigRunning()) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Bitwig is not running - cannot trigger rescan',
+        timestamp: new Date().toISOString()
+      };
+      res.status(503).json(response);
+      return;
+    }
+
+    createRescanFlag();
+
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        message: 'Rescan requested - controller will detect within 10 seconds',
+        flagPath: RESCAN_FLAG
+      },
+      timestamp: new Date().toISOString()
+    };
+    res.json(response);
+  } catch (error) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to create rescan flag: ' + (error as Error).message,
+      timestamp: new Date().toISOString()
+    };
+    res.status(500).json(response);
+  }
+});
+
 // SPA fallback - serve index.html for non-API routes
 app.get('*', (req: Request, res: Response) => {
   // Only serve index.html for non-API routes
@@ -381,6 +652,9 @@ process.on('SIGINT', () => {
   configWatcher.stop();
   if (logWatcher) {
     logWatcher.close();
+  }
+  if (contentWatcher) {
+    contentWatcher.close();
   }
   process.exit(0);
 });

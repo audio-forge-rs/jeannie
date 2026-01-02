@@ -7,7 +7,7 @@
 - **Web Server & API**: Node.js/Express REST API with real-time web interface
 - **Roger CLI**: Python command-line tool for configuration and control
 
-**Current Version**: 0.3.0
+**Current Version**: 0.7.0
 **Vendor**: Audio Forge RS
 **Status**: Active Development
 
@@ -19,13 +19,13 @@ jeannie/
 │   ├── src/
 │   │   └── jeannie.control.ts
 │   ├── dist/           # Compiled output (gitignored)
-│   └── package.json    # v0.6.0
+│   └── package.json    # v0.7.0
 │
 ├── web/                # Web server + REST API + UI
 │   ├── src/
 │   │   ├── server.ts           # Express server
 │   │   ├── configWatcher.ts    # YAML file watcher
-│   │   └── deviceSearch.ts     # Device search index
+│   │   └── contentSearch.ts    # Content search index
 │   ├── public/                 # Static web UI
 │   │   ├── index.html
 │   │   ├── app.js             # Vanilla JS SPA
@@ -34,7 +34,7 @@ jeannie/
 │   └── package.json    # v0.7.0
 │
 ├── roger/              # Python CLI tool
-│   ├── roger.py        # Main CLI script v0.2.0
+│   ├── roger.py        # Main CLI script v0.3.0
 │   └── requirements.txt
 │
 ├── shared/             # Shared TypeScript types (optional)
@@ -43,7 +43,7 @@ jeannie/
 │
 ├── ~/.config/jeannie/  # User data directory
 │   ├── config.yaml     # User configuration
-│   ├── devices.json    # Device index (10MB)
+│   ├── content.json    # Content index (devices, presets, samples)
 │   ├── rescan.flag     # Rescan trigger
 │   └── logs/
 │       └── controller.log
@@ -81,33 +81,44 @@ Both Bitwig and Roger clients can "ping" the server:
 - Auto-disconnects after 30 seconds of inactivity (Roger only)
 - Bitwig status based on process running + log file existence
 
-### Device Index System
+### Content Index System
 
-**Searchable device database** for instant access to all Bitwig plugins:
+**Searchable content database** for instant access to all Bitwig content:
 
-1. **Enumeration** (Controller on init, ~30-60s):
-   - Scans all devices via PopupBrowser API
-   - Captures: name, type, fileType, creator, category
-   - Writes to `~/.config/jeannie/devices.json` (~10MB for 10k devices)
+1. **Content Types**:
+   - **Devices**: VST2, VST3, CLAP, Bitwig native instruments & effects
+   - **Presets**: Plugin presets (Kontakt instruments, M-Tron patches, etc.)
+   - **Samples**: Audio files, loops, one-shots
+   - **Future**: Clips, multisamples
 
-2. **Search Index** (Web server in memory, ~5MB):
+2. **Enumeration** (Controller on init, ~60-120s):
+   - Scans all content types via PopupBrowser API
+   - Captures: name, contentType, creator, category, plugin
+   - Tokenizes names for fast search
+   - Writes to `~/.config/jeannie/content.json` (~13MB for 67k items)
+
+3. **Search Index** (Web server in memory, ~21MB):
    - Token-based index for fast lookups
    - Fuzzy search with Levenshtein distance
-   - Multi-field filtering (type, creator, category)
-   - **Performance**: 1-2ms exact, 10-50ms fuzzy
+   - Multi-field filtering (contentType, creator, category, plugin)
+   - **Performance**: <1ms exact, 2ms token search, 10-50ms fuzzy
 
-3. **Rescan Mechanism**:
+4. **Rescan Mechanism**:
    - Create `~/.config/jeannie/rescan.flag` to trigger
    - Controller checks every 10 seconds
    - Automatic rescan on Bitwig restart
-   - Endpoints: `POST /api/devices/rescan`
-   - CLI: `roger devices rescan`
+   - Endpoints: `POST /api/content/rescan`
+   - CLI: `roger content rescan`
 
-**Example Search**:
+**Example Searches**:
 ```bash
-# Fuzzy search for "acoustic snare"
-GET /api/devices/search?q=acoustic+snare&fuzzy=true
-# Returns: 25 matching devices in ~2ms
+# Search for acoustic snare samples
+GET /api/content/search?q=acoustic+snare&type=Sample&fuzzy=true
+# Returns: ~25 matching samples in ~2ms
+
+# Search for Kontakt piano presets
+GET /api/content/search?q=piano&type=Preset&creator=Native%20Instruments
+# Returns: Kontakt piano instruments instantly
 ```
 
 **See ARCHITECTURE.md** for complete technical details
@@ -119,9 +130,9 @@ GET /api/devices/search?q=acoustic+snare&fuzzy=true
 | Component | Location | Current |
 |-----------|----------|---------|
 | Main | `package.json` | 0.3.0 |
-| Web Server | `web/package.json` | 0.3.0 |
-| Controller | `controller/package.json` | 0.3.0 |
-| Roger | `roger/roger.py __version__` | 0.1.0 |
+| Web Server | `web/package.json` | 0.7.0 |
+| Controller | `controller/package.json` | 0.7.0 |
+| Roger | `roger/roger.py __version__` | 0.3.0 |
 | Web UI | `web/public/app.js` | 0.3.0 |
 
 **Bump Strategy**:
@@ -178,6 +189,12 @@ python3 roger/roger.py --help
 python3 roger/roger.py hello
 python3 roger/roger.py update-config
 
+# Content search commands
+python3 roger/roger.py content search "acoustic snare" --fuzzy
+python3 roger/roger.py content search "piano" --type Preset
+python3 roger/roger.py content stats
+python3 roger/roger.py content rescan
+
 # Install controller in Bitwig
 mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS"
 cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"
@@ -191,6 +208,11 @@ cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller 
 curl http://localhost:3000/health
 curl http://localhost:3000/api/hello
 curl http://localhost:3000/api/status
+
+# Test content search (requires content.json from controller scan)
+curl "http://localhost:3000/api/content/stats"
+curl "http://localhost:3000/api/content/types"
+curl "http://localhost:3000/api/content/search?q=piano&fuzzy=true"
 
 # Test config watching
 echo "version: 0.3.0
@@ -371,18 +393,20 @@ Use simple, consistent naming:
 | POST | `/api/bitwig/log` | Bitwig log forwarding |
 | POST | `/api/roger/command` | Roger command tracking |
 
-### Device Index Endpoints
+### Content Index Endpoints
 
 | Method | Endpoint | Purpose |
 |--------|----------|---------|
-| GET | `/api/devices` | List all devices (paginated) |
-| GET | `/api/devices/search?q=<query>` | Search devices (exact match) |
-| GET | `/api/devices/search?q=<query>&fuzzy=true` | Fuzzy search devices |
-| GET | `/api/devices/stats` | Device statistics (counts by type/creator) |
-| GET | `/api/devices/types` | List all device types |
-| GET | `/api/devices/creators` | List all creators/vendors |
-| GET | `/api/devices/status` | Index status (last scan, device count) |
-| POST | `/api/devices/rescan` | Trigger device rescan |
+| GET | `/api/content` | List all content (paginated) |
+| GET | `/api/content/search?q=<query>` | Search content (token match) |
+| GET | `/api/content/search?q=<query>&fuzzy=true` | Fuzzy search content |
+| GET | `/api/content/search?q=<query>&type=Preset` | Search specific type |
+| GET | `/api/content/stats` | Content statistics (counts by type/creator) |
+| GET | `/api/content/types` | List all content types (Device, Preset, Sample) |
+| GET | `/api/content/creators` | List all creators/vendors |
+| GET | `/api/content/categories` | List all categories |
+| GET | `/api/content/status` | Index status (last scan, content count) |
+| POST | `/api/content/rescan` | Trigger content rescan |
 
 ### Response Format
 
@@ -625,5 +649,5 @@ MIT License - See LICENSE file
 ---
 
 **Last Updated**: 2026-01-02
-**Version**: 0.3.0
+**Version**: 0.7.0
 **Maintainer**: Audio Forge RS
