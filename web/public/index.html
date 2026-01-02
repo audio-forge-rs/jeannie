@@ -16,7 +16,7 @@
             <nav class="nav-bar">
                 <button class="nav-btn active" data-view="search">🔍 Search</button>
                 <button class="nav-btn" data-view="status">📊 Status</button>
-                <button class="nav-btn" data-view="stats">📈 Stats</button>
+                <button class="nav-btn" data-view="metrics">📈 Metrics</button>
             </nav>
         </header>
 
@@ -167,58 +167,58 @@
                 </section>
             </div>
 
-            <!-- Stats View -->
-            <div id="view-stats" class="view">
+            <!-- Metrics View -->
+            <div id="view-metrics" class="view">
                 <section class="card">
-                    <h2>Content Statistics</h2>
+                    <h2>Content statistics</h2>
                     <div id="stats-overview" class="stats-overview">
                         <div class="stat-card">
-                            <div class="stat-value" id="stat-total">-</div>
+                            <div class="stat-value" id="stat-total">...</div>
                             <div class="stat-label">Total Items</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value" id="stat-devices">-</div>
+                            <div class="stat-value" id="stat-devices">...</div>
                             <div class="stat-label">Devices</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value" id="stat-presets">-</div>
+                            <div class="stat-value" id="stat-presets">...</div>
                             <div class="stat-label">Presets</div>
                         </div>
                         <div class="stat-card">
-                            <div class="stat-value" id="stat-samples">-</div>
+                            <div class="stat-value" id="stat-samples">...</div>
                             <div class="stat-label">Samples</div>
                         </div>
                     </div>
                 </section>
 
                 <section class="card">
-                    <h2>By Content Type</h2>
+                    <h2>By content type</h2>
                     <div id="stats-by-type" class="stats-list">
-                        Loading...
+                        <div class="loading-placeholder">Loading...</div>
                     </div>
                 </section>
 
                 <section class="card">
-                    <h2>Top Creators</h2>
+                    <h2>Top creators</h2>
                     <div id="stats-by-creator" class="stats-list">
-                        Loading...
+                        <div class="loading-placeholder">Loading...</div>
                     </div>
                 </section>
 
                 <section class="card">
-                    <h2>Scan Information</h2>
+                    <h2>Scan information</h2>
                     <div id="scan-info" class="info-grid">
                         <div class="info-item">
-                            <span class="label">Last Scan:</span>
-                            <span id="stats-scan-date" class="value">-</span>
+                            <span class="label">Last scan:</span>
+                            <span id="stats-scan-date" class="value">...</span>
                         </div>
                         <div class="info-item">
                             <span class="label">Duration:</span>
-                            <span id="stats-scan-duration" class="value">-</span>
+                            <span id="stats-scan-duration" class="value">...</span>
                         </div>
                         <div class="info-item">
-                            <span class="label">Bitwig Version:</span>
-                            <span id="stats-bitwig-version" class="value">-</span>
+                            <span class="label">Bitwig version:</span>
+                            <span id="stats-bitwig-version" class="value">...</span>
                         </div>
                     </div>
                 </section>

@@ -526,6 +526,18 @@ header {
     font-size: 0.75rem;
 }
 
+/* Placeholder states */
+.loading-placeholder, .error-placeholder, .empty-placeholder {
+    padding: 2rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+}
+
+.error-placeholder {
+    color: var(--warning);
+}
+
 /* Stats View */
 .stats-overview {
     display: grid;

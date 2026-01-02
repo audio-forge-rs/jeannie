@@ -89,7 +89,7 @@ class JeannieApp {
         this.currentView = viewName;
 
         // Load view-specific data
-        if (viewName === 'stats') {
+        if (viewName === 'metrics') {
             this.loadStats();
         } else if (viewName === 'search') {
             this.loadSearchFilters();
@@ -234,7 +234,24 @@ class JeannieApp {
     // Stats functionality
     async loadStats() {
         const data = await this.fetchAPI('/api/content/stats');
-        if (!data || !data.success) return;
+
+        if (!data || !data.success) {
+            // Show error state
+            document.getElementById('stat-total').textContent = '-';
+            document.getElementById('stat-devices').textContent = '-';
+            document.getElementById('stat-presets').textContent = '-';
+            document.getElementById('stat-samples').textContent = '-';
+
+            document.getElementById('stats-by-type').innerHTML =
+                '<div class="error-placeholder">Content index not loaded. Check Status tab.</div>';
+            document.getElementById('stats-by-creator').innerHTML =
+                '<div class="error-placeholder">Content index not loaded. Check Status tab.</div>';
+
+            document.getElementById('stats-scan-date').textContent = '-';
+            document.getElementById('stats-scan-duration').textContent = '-';
+            document.getElementById('stats-bitwig-version').textContent = '-';
+            return;
+        }
 
         const stats = data.data;
 
@@ -246,39 +263,50 @@ class JeannieApp {
 
         // By content type
         const byTypeEl = document.getElementById('stats-by-type');
-        let typeHtml = '<div class="stats-grid">';
-        Object.entries(stats.stats.byContentType || {}).forEach(([type, count]) => {
-            typeHtml += `
-                <div class="stat-row">
-                    <span class="stat-name">${type}</span>
-                    <span class="stat-count">${this.formatNumber(count)}</span>
-                </div>
-            `;
-        });
-        typeHtml += '</div>';
-        byTypeEl.innerHTML = typeHtml;
+        const typeEntries = Object.entries(stats.stats.byContentType || {});
+        if (typeEntries.length === 0) {
+            byTypeEl.innerHTML = '<div class="empty-placeholder">No data available</div>';
+        } else {
+            let typeHtml = '<div class="stats-grid">';
+            typeEntries.forEach(([type, count]) => {
+                typeHtml += `
+                    <div class="stat-row">
+                        <span class="stat-name">${type}</span>
+                        <span class="stat-count">${this.formatNumber(count)}</span>
+                    </div>
+                `;
+            });
+            typeHtml += '</div>';
+            byTypeEl.innerHTML = typeHtml;
+        }
 
         // Top creators (limit to 20)
         const byCreatorEl = document.getElementById('stats-by-creator');
-        let creatorHtml = '<div class="stats-grid">';
         const creators = Object.entries(stats.stats.byCreator || {})
             .sort((a, b) => b[1] - a[1])
             .slice(0, 20);
-        creators.forEach(([creator, count]) => {
-            creatorHtml += `
-                <div class="stat-row">
-                    <span class="stat-name">${this.escapeHtml(creator)}</span>
-                    <span class="stat-count">${this.formatNumber(count)}</span>
-                </div>
-            `;
-        });
-        creatorHtml += '</div>';
-        byCreatorEl.innerHTML = creatorHtml;
+
+        if (creators.length === 0) {
+            byCreatorEl.innerHTML = '<div class="empty-placeholder">No data available</div>';
+        } else {
+            let creatorHtml = '<div class="stats-grid">';
+            creators.forEach(([creator, count]) => {
+                creatorHtml += `
+                    <div class="stat-row">
+                        <span class="stat-name">${this.escapeHtml(creator)}</span>
+                        <span class="stat-count">${this.formatNumber(count)}</span>
+                    </div>
+                `;
+            });
+            creatorHtml += '</div>';
+            byCreatorEl.innerHTML = creatorHtml;
+        }
 
         // Scan info
-        document.getElementById('stats-scan-date').textContent = this.formatTimestamp(stats.scanDate);
+        document.getElementById('stats-scan-date').textContent =
+            stats.scanDate ? this.formatTimestamp(stats.scanDate) : 'Never';
         document.getElementById('stats-scan-duration').textContent =
-            `${(stats.scanDurationMs / 1000).toFixed(1)}s`;
+            stats.scanDurationMs ? `${(stats.scanDurationMs / 1000).toFixed(1)}s` : '-';
         document.getElementById('stats-bitwig-version').textContent =
             stats.bitwigVersion || 'Unknown';
     }
