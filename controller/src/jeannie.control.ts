@@ -6,8 +6,9 @@
  * Bitwig controller script that integrates with the Jeannie web API and Roger CLI
  */
 
-// Bitwig API type stubs (basic types for hello world)
+// Bitwig API type stubs
 declare const loadAPI: (version: number) => void;
+declare const load: (url: string) => string;
 declare const host: {
   defineController: (
     vendor: string,
@@ -22,6 +23,7 @@ declare const host: {
 };
 
 const JEANNIE_VERSION = '0.3.0';
+const API_URL = 'http://localhost:3000';
 
 loadAPI(18);
 
@@ -35,19 +37,42 @@ host.defineController(
 
 host.defineMidiPorts(0, 0);
 
+// Logger function that sends to both console and file
+function log(message: string, level: string = 'info'): void {
+  // Always log to Bitwig console
+  host.println(message);
+
+  // Try to send to web API for file logging
+  try {
+    const payload = JSON.stringify({
+      level: level,
+      message: message,
+      version: JEANNIE_VERSION
+    });
+
+    const url = API_URL + '/api/bitwig/log';
+    load(url + '?level=' + encodeURIComponent(level) +
+         '&message=' + encodeURIComponent(message) +
+         '&version=' + encodeURIComponent(JEANNIE_VERSION));
+  } catch (e) {
+    // Silently fail if API is not available
+    // Don't spam console with connection errors
+  }
+}
+
 function init(): void {
-  host.println('='.repeat(60));
-  host.println('Jeannie v' + JEANNIE_VERSION + ' by Audio Forge RS');
-  host.println('='.repeat(60));
-  host.println('Controller initialized successfully!');
-  host.println('Web API: http://localhost:3000');
-  host.println('Config: /tmp/jeannie-config.yaml');
-  host.println('Use Roger CLI to interact with Jeannie');
-  host.println('='.repeat(60));
+  log('='.repeat(60));
+  log('Jeannie v' + JEANNIE_VERSION + ' by Audio Forge RS');
+  log('='.repeat(60));
+  log('Controller initialized successfully!');
+  log('Web API: http://localhost:3000');
+  log('Config: /tmp/jeannie-config.yaml');
+  log('Use Roger CLI to interact with Jeannie');
+  log('='.repeat(60));
 }
 
 function exit(): void {
-  host.println('[Jeannie] Shutting down...');
+  log('[Jeannie] Shutting down...');
 }
 
 function flush(): void {

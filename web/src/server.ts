@@ -9,6 +9,8 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
+import fs from 'fs';
+import os from 'os';
 import { ConfigWatcher, CONFIG_PATH, JeannieConfig, ConnectionStatus } from './configWatcher';
 
 interface ApiResponse<T = unknown> {
@@ -49,6 +51,22 @@ const connectionStatus: ConnectionStatus = {
 
 // Connection timeout (30 seconds)
 const CONNECTION_TIMEOUT = 30000;
+
+// Log file path
+const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Bitwig');
+const LOG_FILE = path.join(LOG_DIR, 'jeannie.log');
+
+// Ensure log directory exists
+if (!fs.existsSync(LOG_DIR)) {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+}
+
+// Log writing function
+function writeToLogFile(level: string, message: string): void {
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] [${level}] ${message}\n`;
+  fs.appendFileSync(LOG_FILE, logLine, 'utf8');
+}
 
 // Helper function to check if connection is stale
 function isConnectionStale(lastSeen: string | null): boolean {
@@ -163,6 +181,30 @@ app.post('/api/bitwig/ping', (req: Request, res: Response) => {
   const response: ApiResponse = {
     success: true,
     data: { message: 'Ping received' },
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Bitwig controller log endpoint
+app.post('/api/bitwig/log', (req: Request, res: Response) => {
+  const { level = 'info', message, version } = req.body;
+
+  // Update connection status
+  connectionStatus.bitwig.connected = true;
+  connectionStatus.bitwig.lastSeen = new Date().toISOString();
+  if (version) {
+    connectionStatus.bitwig.controllerVersion = version;
+  }
+
+  // Write to log file
+  if (message) {
+    writeToLogFile(level, `[Bitwig] ${message}`);
+  }
+
+  const response: ApiResponse = {
+    success: true,
+    data: { message: 'Log received' },
     timestamp: new Date().toISOString()
   };
   res.json(response);
