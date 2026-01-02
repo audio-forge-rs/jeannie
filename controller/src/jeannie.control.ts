@@ -154,10 +154,16 @@ interface ContentItem {
 
 let allContent: ContentItem[] = [];
 let isScanning = false;
+let popupBrowser: any = null; // Created during init, used later
 
 function enumerateAllContent(): void {
   if (isScanning) {
     log('Scan already in progress, skipping...');
+    return;
+  }
+
+  if (!popupBrowser) {
+    log('ERROR: PopupBrowser not initialized', 'error');
     return;
   }
 
@@ -171,7 +177,7 @@ function enumerateAllContent(): void {
   log('='.repeat(60));
 
   try {
-    const browser = host.createPopupBrowser();
+    const browser = popupBrowser;
 
     // Get available content types
     const contentTypes: string[] = [];
@@ -336,6 +342,15 @@ function init(): void {
   log('Content: ~/.config/jeannie/content.json');
   log('Use Roger CLI to interact with Jeannie');
   log('='.repeat(60));
+
+  // Create PopupBrowser during init (required by Bitwig API)
+  try {
+    popupBrowser = host.createPopupBrowser();
+    log('PopupBrowser created successfully');
+  } catch (e) {
+    log('ERROR: Failed to create PopupBrowser: ' + e, 'error');
+    return;
+  }
 
   // Start content enumeration after 2 seconds (let Bitwig finish loading)
   host.scheduleTask(() => {
