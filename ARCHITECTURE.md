@@ -1,23 +1,32 @@
-# Jeannie Architecture - Device Index System
+# Jeannie Architecture - Content Index System
 
 ## Overview
 
-Jeannie provides instant searchable access to all Bitwig devices (VST, CLAP, native) through an indexed search system.
+Jeannie provides instant searchable access to ALL Bitwig browser content through a unified indexed search system:
+
+- **Devices**: VST2, VST3, CLAP, Bitwig native instruments and effects
+- **Presets**: Plugin presets (Kontakt instruments, M-Tron patches, synth presets, etc.)
+- **Samples**: Audio files, loops, one-shots
+- **Clips**: MIDI clips, audio clips (future)
+- **Multisample**: Multisampled instruments (future)
 
 ## Component Responsibilities
 
 ### Controller (Bitwig)
-- **On Init**: Scans all devices and builds comprehensive index
+- **On Init**: Scans ALL browser content (devices, presets, samples)
+- **Content Types**: Iterates through all PopupBrowser content types
 - **Periodic Check**: Monitors for rescan flag every 10 seconds
-- **Output**: Writes `~/.config/jeannie/devices.json`
+- **Output**: Writes `~/.config/jeannie/content.json`
 
 ### Web Server
-- **On Startup**: Loads device index from JSON file
-- **Search API**: Provides fast search endpoints
+- **On Startup**: Loads content index from JSON file
+- **Search API**: Unified search across all content types
+- **Filtering**: By content type, creator, category, file type
 - **Rescan Trigger**: Creates rescan flag for controller
 
 ### Roger CLI
-- **Query Interface**: Search and list devices
+- **Query Interface**: Search and list all content (devices, presets, samples)
+- **Content Types**: Filter by type (device, preset, sample)
 - **Management**: Trigger rescans, view statistics
 
 ## Data Flow
@@ -32,7 +41,7 @@ Jeannie provides instant searchable access to all Bitwig devices (VST, CLAP, nat
        ▼
 ┌─────────────────────────────┐
 │ ~/.config/jeannie/          │
-│ ├── devices.json  (index)   │
+│ ├── content.json  (index)   │
 │ └── rescan.flag  (trigger)  │
 └──────┬──────────────────────┘
        │ read on startup
@@ -52,19 +61,26 @@ Jeannie provides instant searchable access to all Bitwig devices (VST, CLAP, nat
 
 ## File Formats
 
-### devices.json
+### content.json
 ```json
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "scanDate": "2026-01-02T15:30:00.000Z",
   "bitwigVersion": "5.3.0",
-  "totalDevices": 9847,
-  "scanDurationMs": 45230,
-  "devices": [
+  "scanDurationMs": 125430,
+  "contentTypes": ["Device", "Preset", "Sample"],
+  "totals": {
+    "devices": 9847,
+    "presets": 45230,
+    "samples": 12093,
+    "total": 67170
+  },
+  "content": [
     {
       "index": 0,
+      "contentType": "Device",
       "name": "Polysynth",
-      "type": "Instrument",
+      "deviceType": "Instrument",
       "fileType": "Bitwig",
       "creator": "Bitwig",
       "category": "Synthesizer",
@@ -72,29 +88,61 @@ Jeannie provides instant searchable access to all Bitwig devices (VST, CLAP, nat
     },
     {
       "index": 1,
-      "name": "Acoustic Snare Natural",
-      "type": "Instrument",
-      "fileType": "Bitwig",
-      "creator": "Bitwig",
+      "contentType": "Preset",
+      "name": "Kontakt - Steinway Grand Piano",
+      "creator": "Native Instruments",
+      "category": "Piano",
+      "plugin": "Kontakt 7",
+      "nameTokens": ["kontakt", "steinway", "grand", "piano"]
+    },
+    {
+      "index": 2,
+      "contentType": "Preset",
+      "name": "M-Tron Pro - Mellotron Flute",
+      "creator": "GForce Software",
+      "category": "Mellotron",
+      "plugin": "M-Tron Pro IV",
+      "nameTokens": ["m", "tron", "pro", "mellotron", "flute"]
+    },
+    {
+      "index": 3,
+      "contentType": "Sample",
+      "name": "Acoustic Snare Tight.wav",
       "category": "Drums",
-      "nameTokens": ["acoustic", "snare", "natural"]
+      "sampleRate": 44100,
+      "duration": 1.23,
+      "nameTokens": ["acoustic", "snare", "tight", "wav"]
     }
   ],
   "stats": {
-    "byType": {
-      "Instrument": 4523,
-      "Audio FX": 3891,
-      "Note FX": 1433
+    "byContentType": {
+      "Device": 9847,
+      "Preset": 45230,
+      "Sample": 12093
     },
-    "byFileType": {
-      "VST3": 5234,
-      "CLAP": 1203,
-      "Bitwig": 3410
+    "devices": {
+      "byType": {
+        "Instrument": 4523,
+        "Audio FX": 3891,
+        "Note FX": 1433
+      },
+      "byFileType": {
+        "VST3": 5234,
+        "CLAP": 1203,
+        "Bitwig": 3410
+      }
+    },
+    "presets": {
+      "byPlugin": {
+        "Kontakt 7": 15230,
+        "M-Tron Pro IV": 892,
+        "Massive X": 1203
+      }
     },
     "byCreator": {
-      "Native Instruments": 892,
-      "Arturia": 423,
-      "Bitwig": 3410
+      "Native Instruments": 16892,
+      "Bitwig": 14203,
+      "GForce Software": 1103
     }
   }
 }
@@ -120,13 +168,16 @@ User triggers rescan:
 Controller detects flag (10s poll):
   1. Read rescan.flag
   2. Log scan start
-  3. Enumerate all devices (30-60s)
-  4. Write devices.json
+  3. Enumerate all content types (60-120s)
+     - Devices (VST, CLAP, Bitwig)
+     - Presets (Kontakt, M-Tron, etc.)
+     - Samples (WAV, AIFF, etc.)
+  4. Write content.json
   5. Delete rescan.flag
   6. Log completion
 
 Web server detects change:
-  1. File watcher on devices.json
+  1. File watcher on content.json
   2. Reload index
   3. Rebuild search structures
   4. Log completion
@@ -134,28 +185,48 @@ Web server detects change:
 
 ## API Endpoints
 
-### Device Search
+### Content Search
 ```
-GET /api/devices
-GET /api/devices/search?q=<query>&fuzzy=true
-GET /api/devices/stats
-GET /api/devices/types
-GET /api/devices/creators
+GET /api/content                            # List all content (paginated)
+GET /api/content/search?q=<query>          # Search all content
+GET /api/content/search?q=<query>&type=Preset  # Search presets only
+GET /api/content/search?q=kontakt+piano&fuzzy=true  # Fuzzy search
+GET /api/content/stats                      # Statistics
+GET /api/content/types                      # List content types
+GET /api/content/creators                   # List all creators
 ```
 
-### Device Management
+### Legacy Device Endpoints (Aliases)
 ```
-POST /api/devices/rescan
-GET /api/devices/status
+GET /api/devices → /api/content?type=Device
+GET /api/devices/search → /api/content/search&type=Device
+```
+
+### Content Management
+```
+POST /api/content/rescan                    # Trigger full rescan
+GET /api/content/status                     # Index status
 ```
 
 ### Roger Commands
 ```bash
-roger devices list              # List all devices
-roger devices search <query>    # Search devices
-roger devices stats             # Show statistics
-roger devices rescan            # Trigger rescan
-roger devices status            # Check scan status
+# Search all content
+roger search <query>                        # All content types
+roger search <query> --type preset         # Presets only
+roger search "kontakt piano"               # Exact phrase
+roger search "akoustic snare" --fuzzy     # Fuzzy search
+
+# List content
+roger content list                         # All content
+roger content list --type device          # Devices only
+roger content list --creator "Native Instruments"
+
+# Statistics
+roger content stats                        # All statistics
+
+# Management
+roger content rescan                       # Trigger rescan
+roger content status                       # Check scan status
 ```
 
 ## Search Performance
@@ -175,9 +246,63 @@ roger devices status            # Check scan status
 | Filter by type | O(k) | <2ms |
 
 ### Memory Usage
-- ~10,000 devices @ ~200 bytes each = ~2 MB
-- Index structures = ~3 MB
-- **Total**: ~5 MB (negligible)
+- ~67,000 content items @ ~200 bytes each = ~13 MB
+- Index structures = ~8 MB
+- **Total**: ~21 MB (negligible)
+
+## Web UI Navigation
+
+The web interface provides separate views for different concerns:
+
+```
+┌─────────────────────────────┐
+│  Navigation Bar             │
+│  [Search] [Status] [Stats]  │
+└─────────────────────────────┘
+
+/search (default)
+├── Search bar with auto-complete
+├── Content type filter tabs
+│   ├── All (67k items)
+│   ├── Devices (9.8k)
+│   ├── Presets (45k)
+│   └── Samples (12k)
+├── Creator filter
+├── Category filter
+└── Results grid with pagination
+
+/status
+├── System health
+├── Bitwig connection status
+├── Roger connection status
+├── Config viewer
+└── Version information
+
+/stats
+├── Content statistics
+│   ├── Total content: 67,170
+│   ├── By type (pie chart)
+│   └── By creator (bar chart)
+├── Scan information
+│   ├── Last scan date
+│   ├── Scan duration
+│   └── Rescan button
+└── Performance metrics
+```
+
+### Example Search Flow
+```
+1. User lands on /search
+2. Types "kontakt piano" in search bar
+3. Auto-complete shows suggestions
+4. Selects "Presets" tab to filter
+5. Clicks search → Results in ~2ms
+6. Displays:
+   - Kontakt - Steinway Grand Piano
+   - Kontakt - Yamaha C7 Grand
+   - Kontakt - Upright Piano
+   ... (25 results)
+```
 
 ## Implementation Phases
 
