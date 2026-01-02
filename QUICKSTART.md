@@ -144,7 +144,21 @@ All components are at v0.1.0. To bump versions:
 ✅ Roger CLI with argparse
 ✅ Hello world integration showing Roger's name and version
 ✅ All endpoints returning correct data
+✅ File logging for Bitwig controller
 ✅ Git committed and pushed
+
+## Logging
+
+Controller logs appear in two places:
+- **Bitwig Script Console**: Settings > Controllers > Jeannie > Script Console
+- **Log File**: `~/Library/Logs/Bitwig/logs/jeannie.log` (macOS)
+
+To watch logs from terminal:
+```bash
+tail -f ~/Library/Logs/Bitwig/logs/jeannie.log
+```
+
+**Note**: Bitwig automatically creates the `logs/` subdirectory. Web server must be running for file logging.
 
 ## Next Steps
 
@@ -152,10 +166,9 @@ Ideas for v0.2.0+:
 - Add Roger CLI commands to control Bitwig via REST API
 - Implement actual MIDI handling in Bitwig controller
 - Add device mapping and parameter control
-- Create web UI for the REST API
 - Add authentication/security
 - Implement config file validation
-- Add logging and error handling
+- Add error handling and log levels
 - Write tests
 
 ## Research Sources

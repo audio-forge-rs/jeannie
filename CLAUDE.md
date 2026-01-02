@@ -404,6 +404,44 @@ npm install
 npm run build
 ```
 
+### Logging & Debugging
+
+**Controller Logs**:
+- **Bitwig Script Console**: Settings > Controllers > Jeannie > Script Console
+- **File Log**: `~/Library/Logs/Bitwig/logs/jeannie.log` (macOS)
+  - Note: Bitwig automatically creates the `logs/` subdirectory
+  - Controller sends logs via HTTP to web server
+  - Logs appear in both console AND file
+
+**Tail Jeannie Logs**:
+```bash
+# Watch Jeannie controller logs
+tail -f ~/Library/Logs/Bitwig/logs/jeannie.log
+
+# Watch Bitwig main logs
+tail -f ~/Library/Logs/Bitwig/BitwigStudio.log
+
+# Watch both at once (separate terminals)
+tail -f ~/Library/Logs/Bitwig/logs/jeannie.log
+tail -f ~/Library/Logs/Bitwig/BitwigStudio.log
+```
+
+**Web Server Logs**:
+```bash
+# Server outputs to console
+node web/dist/server.js
+
+# Web server also writes Bitwig controller logs to file
+# So you can see controller activity even when Bitwig console is closed
+```
+
+**General Tips**:
+- Always check Bitwig Script Console first for controller errors
+- File logs persist across Bitwig restarts
+- Web server must be running for file logging to work
+- Controller gracefully degrades if web server is down (console-only logging)
+- Use `grep` to filter logs: `tail -f ~/Library/Logs/Bitwig/logs/jeannie.log | grep -i error`
+
 ## Security & Git Hygiene
 
 ### Gitignored Files

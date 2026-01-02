@@ -52,7 +52,9 @@ const connectionStatus: ConnectionStatus = {
 // Connection timeout (30 seconds)
 const CONNECTION_TIMEOUT = 30000;
 
-// Log file path - system logs directory
+// Log file path
+// Note: Bitwig automatically creates a logs/ subdirectory, so the actual file will be at:
+// ~/Library/Logs/Bitwig/logs/jeannie.log (macOS)
 const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Bitwig');
 const LOG_FILE = path.join(LOG_DIR, 'jeannie.log');
 
