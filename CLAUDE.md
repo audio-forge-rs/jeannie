@@ -715,6 +715,208 @@ This is a solo project but follows professional standards:
 - Type-safe code
 - No breaking changes without major version bump
 
+## Future Vision: AI Music Composition
+
+### Overview
+
+Jeannie will enable AI-assisted music composition through Claude Code sessions:
+
+```
+User: "Create a honky tonk song"
+Claude: [Uses instrument knowledge, creates tracks, writes music, loads into Bitwig]
+```
+
+### Architecture (Planned)
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Claude Code Session                          │
+│  "Create a honky tonk song"                                      │
+│         │                                                        │
+│         ▼                                                        │
+│  ┌─────────────────┐                                            │
+│  │ Instrument      │ ← INSTRUMENTS.md, content.json              │
+│  │ Selection       │   Genre scores, MIDI ranges                 │
+│  │ (Banjo, Fiddle, │   Playing modes, keyswitches               │
+│  │  Piano, Bass)   │                                            │
+│  └────────┬────────┘                                            │
+│           ▼                                                      │
+│  ┌─────────────────┐                                            │
+│  │ ABC Notation    │ ← Text-based, LLM-friendly                  │
+│  │ Generation      │   One file per instrument/track             │
+│  └────────┬────────┘                                            │
+└───────────┼─────────────────────────────────────────────────────┘
+            ▼
+┌─────────────────────────────────────────────────────────────────┐
+│              jeannie-compose CLI (Single Entrypoint)             │
+│                                                                  │
+│  jeannie-compose --abc ./song/ --validate --convert --load      │
+│                                                                  │
+│  ┌─────────────────┐   ┌─────────────────┐   ┌───────────────┐ │
+│  │ ABC Validation  │ → │ ABC → MIDI      │ → │ MIDI          │ │
+│  │ - Musical sound │   │ Conversion      │   │ Validation    │ │
+│  │ - Bar counts    │   │                 │   │ - Bar counts  │ │
+│  │   match         │   │                 │   │ - Note ranges │ │
+│  └─────────────────┘   └─────────────────┘   └───────┬───────┘ │
+└──────────────────────────────────────────────────────┼──────────┘
+                                                       ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    Bitwig Controller                             │
+│                                                                  │
+│  Option A: Live MIDI        │  Option B: Clip Placement         │
+│  - Send notes in real-time  │  - Import MIDI clips to tracks    │
+│  - Controller handles       │  - Position on timeline           │
+│    timing                   │  - Set loop regions               │
+│                             │                                    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Why ABC Notation
+
+ABC is text-based musical notation, ideal for LLM generation:
+
+```abc
+X:1
+T:Honky Tonk Piano
+M:4/4
+L:1/8
+K:G
+Q:1/4=120
+|: G2 B2 d2 B2 | A2 c2 e2 c2 | G2 B2 d2 B2 | D2 G2 B2 d2 :|
+```
+
+**Advantages**:
+- Plain text (no binary)
+- Human readable
+- Easy to validate bar counts
+- LLM can generate and modify
+- Standard format with tooling
+
+### Validation Pipeline
+
+**Stage 1: ABC Validation**
+```bash
+jeannie-compose validate-abc ./song/
+# Checks:
+# - Valid ABC syntax
+# - All parts have same bar count
+# - Notes within instrument ranges
+# - Tempo/time signature consistency
+```
+
+**Stage 2: MIDI Conversion**
+```bash
+jeannie-compose convert ./song/
+# Converts ABC → MIDI using abc2midi or similar
+# Outputs: ./song/*.mid
+```
+
+**Stage 3: MIDI Validation**
+```bash
+jeannie-compose validate-midi ./song/
+# Checks:
+# - Valid MIDI format
+# - All clips same bar count
+# - Notes within playable ranges (not keyswitches)
+# - No overlapping notes in mono instruments
+```
+
+**Stage 4: Bitwig Loading**
+```bash
+jeannie-compose load ./song/ --mode clips
+# OR
+jeannie-compose load ./song/ --mode live
+```
+
+### Instrument Selection Logic
+
+When Claude receives "honky tonk song", it will:
+
+1. **Query genre scores** from content.json metadata:
+   ```
+   Misfit Banjo: { "country": 80, "americana": 95, "blues": 90 }
+   Misfit Fiddle: { "country": 85, "americana": 90, "folk": 95 }
+   Piano: { "honky_tonk": 95, "country": 80, "jazz": 90 }
+   ```
+
+2. **Check playing modes**:
+   - Banjo: auto-strum → send chords, not arpeggios
+   - Fiddle: legato mode → single melody lines
+   - Piano: poly mode → full chord voicings
+
+3. **Respect MIDI ranges**:
+   - Validate notes stay in playable range (blue keys)
+   - Avoid keyswitch range (red keys)
+   - Apply Bitwig octave offset (C3 = Middle C)
+
+4. **Generate ABC** with correct:
+   - Time signature
+   - Key signature
+   - Tempo
+   - Bar count (same for all parts)
+
+### Track Creation Sequence
+
+```typescript
+// Future Bitwig Controller API
+interface CreateSongRequest {
+  name: string;
+  tempo: number;
+  timeSignature: [number, number];
+  tracks: {
+    name: string;
+    instrument: {
+      plugin: string;       // 'Kontakt 8'
+      preset: string;       // 'Misfit Banjo'
+    };
+    playingMode?: 'poly' | 'mono' | 'legato';
+    midiFile?: string;      // Path to MIDI clip
+  }[];
+}
+```
+
+### Dual-Use Requirement
+
+**CRITICAL**: System must work both ways:
+
+1. **Claude Code Sessions**: AI generates music via prompts
+2. **Human Use**: Manual operation via CLI, web UI, Roger
+
+**Never remove human-accessible functionality** when adding AI features.
+All tools must have CLI interfaces that work standalone.
+
+### File Structure (Planned)
+
+```
+jeannie/
+├── compose/                    # New composition tools
+│   ├── src/
+│   │   ├── cli.ts             # jeannie-compose entrypoint
+│   │   ├── abcValidator.ts    # ABC validation
+│   │   ├── abcToMidi.ts       # ABC → MIDI conversion
+│   │   ├── midiValidator.ts   # MIDI validation
+│   │   └── bitwigLoader.ts    # Bitwig integration
+│   └── package.json
+│
+├── songs/                      # Example songs (gitignored?)
+│   └── honky-tonk-example/
+│       ├── song.yaml          # Metadata (tempo, key, instruments)
+│       ├── banjo.abc
+│       ├── fiddle.abc
+│       ├── piano.abc
+│       └── bass.abc
+```
+
+### Implementation Phases (Not Yet Started)
+
+1. **Phase 1**: ABC validation + MIDI conversion CLI
+2. **Phase 2**: Instrument metadata enrichment (genre scores, ranges)
+3. **Phase 3**: Bitwig track creation API
+4. **Phase 4**: Claude Code integration prompts
+5. **Phase 5**: Live MIDI playback option
+
+---
+
 ## License
 
 MIT License - See LICENSE file
