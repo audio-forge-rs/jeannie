@@ -34,7 +34,6 @@ host.defineController(
 );
 
 host.defineMidiPorts(0, 0);
-host.addDeviceNameBasedDiscoveryPair(['Jeannie'], ['Jeannie']);
 
 function init(): void {
   host.println('='.repeat(60));
