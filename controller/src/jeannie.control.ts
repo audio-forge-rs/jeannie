@@ -252,26 +252,33 @@ function finishEnumeration(startTime: number): void {
     stats.byContentType[item.contentType]++;
   });
 
-  // Build content index
-  const contentIndex = {
-    version: '0.2.0',
-    scanDate: new Date().toISOString(),
-    bitwigVersion: 'API v18', // Using API version as proxy (Bitwig 5.x uses API v18)
-    scanDurationMs: duration,
-    contentTypes: Object.keys(stats.byContentType),
-    totals: {
-      total: allContent.length,
-      ...stats.byContentType
-    },
-    content: allContent,
-    stats: stats
-  };
+  // Only write to content.json if we found items
+  // This prevents overwriting filesystem scanner data when PopupBrowser returns 0
+  if (allContent.length > 0) {
+    // Build content index
+    const contentIndex = {
+      version: '0.2.0',
+      scanDate: new Date().toISOString(),
+      bitwigVersion: 'API v18', // Using API version as proxy (Bitwig 5.x uses API v18)
+      scanDurationMs: duration,
+      contentTypes: Object.keys(stats.byContentType),
+      totals: {
+        total: allContent.length,
+        ...stats.byContentType
+      },
+      content: allContent,
+      stats: stats
+    };
 
-  // Write to file
-  writeJSONFile(CONTENT_FILE, contentIndex);
+    // Write to file
+    writeJSONFile(CONTENT_FILE, contentIndex);
 
-  log('Content index written to: ' + CONTENT_FILE);
-  log('Use: jq .totals ' + CONTENT_FILE + ' to view statistics');
+    log('Content index written to: ' + CONTENT_FILE);
+    log('Use: jq .totals ' + CONTENT_FILE + ' to view statistics');
+  } else {
+    log('No items found - keeping existing content.json');
+    log('Use filesystem scanner instead: cd web && npm run scan');
+  }
 
   isScanning = false;
 }
