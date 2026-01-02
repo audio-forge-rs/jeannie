@@ -115,25 +115,32 @@ function checkBitwigConnection(): void {
       return;
     }
 
-    // Process is running AND log file exists = controller is loaded and active
+    // Read log to check for shutdown message and parse version
     const stats = fs.statSync(CONTROLLER_LOG_PATH);
+    const logContent = fs.readFileSync(CONTROLLER_LOG_PATH, 'utf8');
+    const lines = logContent.trim().split('\n');
+
+    // Check if most recent log entry is a shutdown message
+    const lastLine = lines[lines.length - 1] || '';
+    if (lastLine.includes('Shutting down')) {
+      // Controller is shutting down - mark as disconnected
+      connectionStatus.bitwig.connected = false;
+      connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
+      return;
+    }
+
+    // Process is running AND log file exists = controller is loaded and active
     connectionStatus.bitwig.connected = true;
     connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
 
     // Parse version from log (only if not already cached)
     if (!connectionStatus.bitwig.controllerVersion) {
-      try {
-        const logContent = fs.readFileSync(CONTROLLER_LOG_PATH, 'utf8');
-        const lines = logContent.trim().split('\n');
-        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
-          const match = lines[i].match(/Jeannie v([\d.]+)/);
-          if (match) {
-            connectionStatus.bitwig.controllerVersion = match[1];
-            break;
-          }
+      for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+        const match = lines[i].match(/Jeannie v([\d.]+)/);
+        if (match) {
+          connectionStatus.bitwig.controllerVersion = match[1];
+          break;
         }
-      } catch {
-        // Ignore parse errors
       }
     }
   } catch {
