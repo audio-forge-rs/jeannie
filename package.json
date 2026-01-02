@@ -1,0 +1,26 @@
+{
+  "name": "jeannie-bitwig-controller",
+  "version": "0.1.0",
+  "description": "Jeannie - A Bitwig Studio controller with web interface and Roger CLI integration",
+  "scripts": {
+    "build": "npm run build:controller && npm run build:web",
+    "build:controller": "cd controller && npm run build",
+    "build:web": "cd web && npm run build",
+    "dev:web": "cd web && npm run dev",
+    "start": "cd web && npm start",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "bitwig",
+    "controller",
+    "typescript",
+    "rest-api"
+  ],
+  "author": "",
+  "license": "MIT",
+  "workspaces": [
+    "controller",
+    "web",
+    "shared"
+  ]
+}

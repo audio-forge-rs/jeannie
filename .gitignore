@@ -1,2 +1,15 @@
 logs/
+node_modules/
+dist/
+build/
+*.log
+.DS_Store
+.env
+*.pyc
+__pycache__/
+.vscode/
+.idea/
+*.swp
+*.swo
+.npm
 

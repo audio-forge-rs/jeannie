@@ -1,0 +1,27 @@
+{
+  "name": "@jeannie/web",
+  "version": "0.1.0",
+  "description": "Jeannie web interface and REST API server",
+  "main": "dist/server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/server.ts",
+    "start": "node dist/server.js",
+    "watch": "tsc --watch"
+  },
+  "keywords": ["jeannie", "api", "rest"],
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "yaml": "^2.6.1",
+    "chokidar": "^4.0.3",
+    "cors": "^2.8.5"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.0",
+    "@types/node": "^22.10.5",
+    "@types/cors": "^2.8.17",
+    "typescript": "^5.7.2",
+    "ts-node": "^10.9.2"
+  }
+}

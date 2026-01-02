@@ -1,0 +1,16 @@
+{
+  "name": "@jeannie/controller",
+  "version": "0.1.0",
+  "description": "Jeannie Bitwig Studio controller script",
+  "main": "dist/jeannie.control.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "keywords": ["bitwig", "controller"],
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22.10.5"
+  }
+}
