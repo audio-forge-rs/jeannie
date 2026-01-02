@@ -52,7 +52,7 @@ const connectionStatus: ConnectionStatus = {
 // Connection timeout (30 seconds)
 const CONNECTION_TIMEOUT = 30000;
 
-// Log file path
+// Log file path - system logs directory
 const LOG_DIR = path.join(os.homedir(), 'Library', 'Logs', 'Bitwig');
 const LOG_FILE = path.join(LOG_DIR, 'jeannie.log');
 
