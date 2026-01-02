@@ -108,42 +108,33 @@ function checkBitwigConnection(): void {
       return;
     }
 
-    // Process running - check if controller log exists and is recent
+    // Process running - check if controller log exists (proves controller loaded)
     if (!fs.existsSync(CONTROLLER_LOG_PATH)) {
       connectionStatus.bitwig.connected = false;
       connectionStatus.bitwig.lastSeen = null;
       return;
     }
 
-    // Check last modified time (allow up to 2 minutes for init-only logging)
+    // Process is running AND log file exists = controller is loaded and active
     const stats = fs.statSync(CONTROLLER_LOG_PATH);
-    const lastModified = stats.mtime.getTime();
-    const now = Date.now();
-    const twoMinutes = 120000;
+    connectionStatus.bitwig.connected = true;
+    connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
 
-    if (now - lastModified < twoMinutes) {
-      connectionStatus.bitwig.connected = true;
-      connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
-
-      // Parse version from log (only if not already cached)
-      if (!connectionStatus.bitwig.controllerVersion) {
-        try {
-          const logContent = fs.readFileSync(CONTROLLER_LOG_PATH, 'utf8');
-          const lines = logContent.trim().split('\n');
-          for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
-            const match = lines[i].match(/Jeannie v([\d.]+)/);
-            if (match) {
-              connectionStatus.bitwig.controllerVersion = match[1];
-              break;
-            }
+    // Parse version from log (only if not already cached)
+    if (!connectionStatus.bitwig.controllerVersion) {
+      try {
+        const logContent = fs.readFileSync(CONTROLLER_LOG_PATH, 'utf8');
+        const lines = logContent.trim().split('\n');
+        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+          const match = lines[i].match(/Jeannie v([\d.]+)/);
+          if (match) {
+            connectionStatus.bitwig.controllerVersion = match[1];
+            break;
           }
-        } catch {
-          // Ignore parse errors
         }
+      } catch {
+        // Ignore parse errors
       }
-    } else {
-      connectionStatus.bitwig.connected = false;
-      connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
     }
   } catch {
     connectionStatus.bitwig.connected = false;
