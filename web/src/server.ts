@@ -13,6 +13,9 @@ import fs from 'fs';
 import os from 'os';
 import { ConfigWatcher, CONFIG_PATH, JeannieConfig, ConnectionStatus } from './configWatcher';
 
+// Controller log path for monitoring connection status
+const CONTROLLER_LOG_PATH = path.join(os.homedir(), '.config', 'jeannie', 'logs', 'controller.log');
+
 interface ApiResponse<T = unknown> {
   success: boolean;
   data?: T;
@@ -30,7 +33,7 @@ interface HealthResponse {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.4.0';
+const VERSION = '0.5.0';
 
 const startTime = Date.now();
 const configWatcher = new ConfigWatcher();
@@ -75,6 +78,55 @@ function isConnectionStale(lastSeen: string | null): boolean {
   if (!lastSeen) return true;
   return Date.now() - new Date(lastSeen).getTime() > CONNECTION_TIMEOUT;
 }
+
+// Check Bitwig controller connection by monitoring log file
+function checkBitwigConnection(): void {
+  try {
+    if (!fs.existsSync(CONTROLLER_LOG_PATH)) {
+      connectionStatus.bitwig.connected = false;
+      connectionStatus.bitwig.lastSeen = null;
+      return;
+    }
+
+    // Check last modified time
+    const stats = fs.statSync(CONTROLLER_LOG_PATH);
+    const lastModified = stats.mtime.getTime();
+    const now = Date.now();
+
+    // If modified within last 30 seconds, consider connected
+    if (now - lastModified < CONNECTION_TIMEOUT) {
+      connectionStatus.bitwig.connected = true;
+      connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
+
+      // Try to parse version from last log entry
+      try {
+        const logContent = fs.readFileSync(CONTROLLER_LOG_PATH, 'utf8');
+        const lines = logContent.trim().split('\n');
+
+        // Look for version line (usually near the start of a session)
+        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+          const match = lines[i].match(/Jeannie v([\d.]+)/);
+          if (match) {
+            connectionStatus.bitwig.controllerVersion = match[1];
+            break;
+          }
+        }
+      } catch (parseError) {
+        // Ignore parse errors, version stays as-is
+      }
+    } else {
+      connectionStatus.bitwig.connected = false;
+      connectionStatus.bitwig.lastSeen = stats.mtime.toISOString();
+    }
+  } catch (error) {
+    connectionStatus.bitwig.connected = false;
+    connectionStatus.bitwig.lastSeen = null;
+  }
+}
+
+// Update Bitwig connection status every 5 seconds
+setInterval(checkBitwigConnection, 5000);
+checkBitwigConnection(); // Initial check
 
 // Middleware
 app.use(cors());
@@ -156,8 +208,8 @@ app.get('/api/version', (_req: Request, res: Response) => {
 
 // Connection status endpoint
 app.get('/api/status', (_req: Request, res: Response) => {
-  // Update connection status based on last seen time
-  connectionStatus.bitwig.connected = !isConnectionStale(connectionStatus.bitwig.lastSeen);
+  // Bitwig status is auto-updated by log file monitoring (every 5 seconds)
+  // Only update Roger status based on last seen time
   connectionStatus.roger.connected = !isConnectionStale(connectionStatus.roger.lastSeen);
 
   const response: ApiResponse<ConnectionStatus> = {
