@@ -25,6 +25,19 @@ export interface JeannieConfig {
   lastUpdated: string;
 }
 
+export interface ConnectionStatus {
+  bitwig: {
+    connected: boolean;
+    lastSeen: string | null;
+    controllerVersion: string | null;
+  };
+  roger: {
+    connected: boolean;
+    lastSeen: string | null;
+    lastCommand: string | null;
+  };
+}
+
 export class ConfigWatcher {
   private watcher: FSWatcher | null = null;
   private config: JeannieConfig | null = null;

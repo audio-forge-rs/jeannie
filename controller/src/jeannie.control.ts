@@ -1,8 +1,8 @@
 /**
  * Jeannie Bitwig Controller
- * Version: 0.1.0
+ * Version: 0.3.0
  *
- * A hello world Bitwig controller that integrates with the Jeannie web API
+ * A Bitwig controller that integrates with the Jeannie web API and Roger CLI
  */
 
 // Bitwig API type stubs (basic types for hello world)
@@ -20,16 +20,16 @@ declare const host: {
   println: (message: string) => void;
 };
 
-const JEANNIE_VERSION = '0.1.0';
+const JEANNIE_VERSION = '0.3.0';
 
 loadAPI(18);
 
 host.defineController(
-  'Jeannie',
+  'Audio Forge RS',
   'Jeannie Controller',
   JEANNIE_VERSION,
   '6c7e5d4f-8a9b-4c3d-2e1f-0a9b8c7d6e5f',
-  'Jeannie Project'
+  'Audio Forge RS'
 );
 
 host.defineMidiPorts(0, 0);

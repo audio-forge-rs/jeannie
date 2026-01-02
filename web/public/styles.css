@@ -208,6 +208,27 @@ footer p {
 .status-error { color: var(--error); }
 .status-warning { color: var(--warning); }
 
+/* Status Badge */
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.25rem 0.75rem;
+    border-radius: 9999px;
+    font-weight: 600;
+    font-size: 0.875rem;
+}
+
+.status-badge.status-ok {
+    background: rgba(16, 185, 129, 0.1);
+    color: var(--success);
+}
+
+.status-badge.status-error {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--error);
+}
+
 /* Loading Animation */
 @keyframes shimmer {
     0% { background-position: -1000px 0; }

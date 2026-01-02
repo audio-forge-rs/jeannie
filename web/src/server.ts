@@ -1,15 +1,15 @@
 /**
  * Jeannie REST API Server
- * Version: 0.2.0
+ * Version: 0.3.0
  *
  * Main server providing REST API for Jeannie Bitwig controller
- * Now with web UI!
+ * Now with web UI and connection status tracking!
  */
 
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import path from 'path';
-import { ConfigWatcher, CONFIG_PATH, JeannieConfig } from './configWatcher';
+import { ConfigWatcher, CONFIG_PATH, JeannieConfig, ConnectionStatus } from './configWatcher';
 
 interface ApiResponse<T = unknown> {
   success: boolean;
@@ -28,10 +28,33 @@ interface HealthResponse {
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const VERSION = '0.2.0';
+const VERSION = '0.3.0';
 
 const startTime = Date.now();
 const configWatcher = new ConfigWatcher();
+
+// Connection status tracking
+const connectionStatus: ConnectionStatus = {
+  bitwig: {
+    connected: false,
+    lastSeen: null,
+    controllerVersion: null
+  },
+  roger: {
+    connected: false,
+    lastSeen: null,
+    lastCommand: null
+  }
+};
+
+// Connection timeout (30 seconds)
+const CONNECTION_TIMEOUT = 30000;
+
+// Helper function to check if connection is stale
+function isConnectionStale(lastSeen: string | null): boolean {
+  if (!lastSeen) return true;
+  return Date.now() - new Date(lastSeen).getTime() > CONNECTION_TIMEOUT;
+}
 
 // Middleware
 app.use(cors());
@@ -103,8 +126,63 @@ app.get('/api/version', (_req: Request, res: Response) => {
     data: {
       jeannie: VERSION,
       roger: config?.roger?.version || 'unknown',
-      config: config?.version || 'unknown'
+      config: config?.version || 'unknown',
+      controller: connectionStatus.bitwig.controllerVersion || 'unknown'
     },
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Connection status endpoint
+app.get('/api/status', (_req: Request, res: Response) => {
+  // Update connection status based on last seen time
+  connectionStatus.bitwig.connected = !isConnectionStale(connectionStatus.bitwig.lastSeen);
+  connectionStatus.roger.connected = !isConnectionStale(connectionStatus.roger.lastSeen);
+
+  const response: ApiResponse<ConnectionStatus> = {
+    success: true,
+    data: connectionStatus,
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Bitwig controller ping endpoint
+app.post('/api/bitwig/ping', (req: Request, res: Response) => {
+  const { version } = req.body;
+
+  connectionStatus.bitwig.connected = true;
+  connectionStatus.bitwig.lastSeen = new Date().toISOString();
+  if (version) {
+    connectionStatus.bitwig.controllerVersion = version;
+  }
+
+  console.log('[Bitwig] Controller ping received, version:', version || 'unknown');
+
+  const response: ApiResponse = {
+    success: true,
+    data: { message: 'Ping received' },
+    timestamp: new Date().toISOString()
+  };
+  res.json(response);
+});
+
+// Roger command endpoint
+app.post('/api/roger/command', (req: Request, res: Response) => {
+  const { command } = req.body;
+
+  connectionStatus.roger.connected = true;
+  connectionStatus.roger.lastSeen = new Date().toISOString();
+  if (command) {
+    connectionStatus.roger.lastCommand = command;
+  }
+
+  console.log('[Roger] Command received:', command || 'unknown');
+
+  const response: ApiResponse = {
+    success: true,
+    data: { message: 'Command received', command },
     timestamp: new Date().toISOString()
   };
   res.json(response);

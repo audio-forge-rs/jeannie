@@ -1,12 +1,13 @@
 /**
  * Jeannie Controller SPA - Vanilla JavaScript (2025)
- * Version: 0.2.0
+ * Version: 0.3.0
  *
  * Modern vanilla JS following 2025 best practices:
  * - No build step required
  * - ES6+ modules
  * - Reactive updates
  * - Clean, functional approach
+ * - Connection status tracking for Bitwig and Roger
  */
 
 const API_BASE = '';
@@ -114,6 +115,35 @@ class JeannieApp {
         }
     }
 
+    async updateConnectionStatus() {
+        const data = await this.fetchAPI('/api/status');
+
+        if (data?.success && data.data) {
+            const status = data.data;
+
+            // Bitwig status
+            const bitwigEl = document.getElementById('bitwig-status');
+            bitwigEl.textContent = status.bitwig.connected ? '🟢 Connected' : '⚫ Disconnected';
+            bitwigEl.className = `value status-badge status-${status.bitwig.connected ? 'ok' : 'error'}`;
+
+            const bitwigLastSeen = document.getElementById('bitwig-lastseen');
+            if (status.bitwig.lastSeen) {
+                const timeDiff = Math.floor((Date.now() - new Date(status.bitwig.lastSeen).getTime()) / 1000);
+                bitwigLastSeen.textContent = timeDiff < 60 ? `${timeDiff}s ago` : this.formatTimestamp(status.bitwig.lastSeen);
+            } else {
+                bitwigLastSeen.textContent = 'Never';
+            }
+
+            // Roger status
+            const rogerEl = document.getElementById('roger-status');
+            rogerEl.textContent = status.roger.connected ? '🟢 Connected' : '⚫ Disconnected';
+            rogerEl.className = `value status-badge status-${status.roger.connected ? 'ok' : 'error'}`;
+
+            const rogerCommand = document.getElementById('roger-command');
+            rogerCommand.textContent = status.roger.lastCommand || 'None';
+        }
+    }
+
     async refresh() {
         this.lastUpdate = new Date();
 
@@ -122,7 +152,8 @@ class JeannieApp {
             this.updateHello(),
             this.updateVersion(),
             this.updateConfig(),
-            this.updateHealth()
+            this.updateHealth(),
+            this.updateConnectionStatus()
         ]);
     }
 
