@@ -2,11 +2,10 @@
 
 ## Project Overview
 
-**Jeannie** is a Bitwig Studio controller ecosystem with four main components:
+**Jeannie** is a Bitwig Studio controller ecosystem with three main components:
 - **Bitwig Controller**: TypeScript controller script (transpiles to JS for Bitwig)
 - **Web Server & API**: Node.js/Express REST API with real-time web interface
-- **Roger CLI**: Python command-line tool for general Bitwig control
-- **Compose CLI**: TypeScript CLI for ABC→MIDI composition workflow
+- **Jeannie CLI**: Unified TypeScript CLI for Bitwig control and ABC→MIDI composition
 
 **Current Version**: 0.10.0 (see `versions.json` for per-component versions)
 **Vendor**: Audio Forge RS
@@ -37,21 +36,18 @@ jeannie/
 │   ├── dist/           # Compiled output (gitignored)
 │   └── package.json    # v0.8.0
 │
-├── compose/            # ABC → MIDI composition CLI
+├── compose/            # Unified CLI + composition tools
 │   ├── src/
-│   │   ├── cli.ts              # jeannie-compose entrypoint
+│   │   ├── cli.ts              # jeannie CLI entrypoint
 │   │   ├── index.ts            # Module exports
 │   │   ├── abc/
 │   │   │   ├── parser.ts       # ABC notation parser
 │   │   │   ├── validator.ts    # ABC validation
 │   │   │   └── index.ts
 │   │   └── midi/
-│   │       └── index.ts        # MIDI types and conversion (placeholder)
-│   └── package.json    # v0.1.0
-│
-├── roger/              # Python CLI tool
-│   ├── roger.py        # Main CLI script v0.3.0
-│   └── requirements.txt
+│   │       ├── index.ts        # MIDI types
+│   │       └── converter.ts    # ABC→MIDI conversion
+│   └── package.json    # v0.9.0
 │
 ├── docs/               # Documentation
 │   └── instruments/    # Downloaded manuals (gitignored)
@@ -78,45 +74,37 @@ jeannie/
 └── CLAUDE.md           # Development guidelines (this file)
 ```
 
-## CLI Tools: Roger vs Compose
+## Jeannie CLI
 
-Jeannie has **two CLI tools** with distinct purposes:
-
-| Tool | Language | Purpose |
-|------|----------|---------|
-| **roger** (`roger/roger.py`) | Python | General-purpose Jeannie CLI |
-| **jeannie-compose** (`compose/src/cli.ts`) | TypeScript | Specialized composition pipeline |
-
-### Roger CLI - General Bitwig Control
-The **primary CLI** for interacting with Jeannie and Bitwig:
-- Health checks and status monitoring
-- Content search (devices, presets, samples)
-- **Track management** (create, select, mute, solo, volume, pan)
-- Configuration management
+The unified `jeannie` CLI handles all Bitwig control and composition tasks:
 
 ```bash
-roger health                      # Check server health
-roger track list                  # List all tracks
-roger track create --name Piano   # Create instrument track
-roger track mute                  # Mute current track
-roger content search "strings"    # Search content index
+# Health & status
+jeannie health                    # Check server health
+jeannie status                    # Show Bitwig connection status
+jeannie version                   # Show all component versions
+
+# Track management
+jeannie track list                # List all tracks
+jeannie track create --name Piano # Create instrument track
+jeannie track select 0            # Select first track
+jeannie track mute                # Mute current track
+jeannie track volume 80           # Set volume to 80%
+
+# Content search
+jeannie content search "strings"  # Search content index
+jeannie content search "piano" --type Preset --fuzzy
+jeannie content stats             # Show content statistics
+
+# ABC→MIDI composition
+jeannie validate ./song.abc       # Validate ABC notation
+jeannie convert ./song.abc        # Convert to MIDI
+jeannie load ./song.mid           # Load into Bitwig
+
+# Global options
+jeannie --api-url http://host:3000 health  # Custom API URL
+jeannie --json health             # Output raw JSON
 ```
-
-### Compose CLI - ABC→MIDI Workflow
-A **specialized extension** for AI-assisted music composition:
-- ABC notation validation
-- ABC to MIDI conversion
-- Loading MIDI into Bitwig
-
-```bash
-jeannie-compose validate ./song.abc   # Validate ABC notation
-jeannie-compose convert ./song.abc    # Convert to MIDI
-jeannie-compose load ./song.mid       # Load into Bitwig
-```
-
-**Analogy**: Think of it like `git` vs `git-lfs` - Roger is the main tool, Compose is a specialized extension.
-
-**Important**: Roger is NOT abandoned. It is the primary CLI and is actively maintained.
 
 ## Key Concepts
 
@@ -141,11 +129,9 @@ jeannie-compose load ./song.mid       # Load into Bitwig
 
 ### Connection Status Tracking
 
-Both Bitwig and Roger clients can "ping" the server:
+Bitwig connection is tracked via:
 - **Bitwig**: Event-driven monitoring (process check + log file watching)
-- **Roger**: `POST /api/roger/command` with command name
 - **Status**: `GET /api/status` returns connection state
-- Auto-disconnects after 30 seconds of inactivity (Roger only)
 - Bitwig status based on process running + log file existence
 
 ### Content Index System
@@ -178,7 +164,7 @@ Both Bitwig and Roger clients can "ping" the server:
    - Controller checks every 10 seconds
    - Automatic rescan on Bitwig restart
    - Endpoints: `POST /api/content/rescan`
-   - CLI: `roger content rescan`
+   - CLI: `jeannie content rescan`
 
 **Example Searches**:
 ```bash
@@ -203,15 +189,13 @@ GET /api/content/search?q=piano&type=Preset&creator=Native%20Instruments
   "web": "0.10.0",
   "controller": "0.10.0",
   "compose": "0.9.0",
-  "shared": "0.9.0",
-  "roger": "0.10.0"
+  "shared": "0.9.0"
 }
 ```
 
 Each component reads its version from this file at runtime:
 - **Web Server**: Reads `versions.web` from `../../versions.json`
-- **Compose CLI**: Reads `versions.compose` from `../../versions.json`
-- **Roger CLI**: Reads `versions.roger` from `../versions.json`
+- **Jeannie CLI**: Reads `versions.compose` from `../../versions.json`
 - **Controller**: Reads `versions.controller` from `~/.config/jeannie/versions.json`
 
 The controller runs in Bitwig's isolated environment, so `npm run build` copies `versions.json` to `~/.config/jeannie/` via the `sync-versions` script.
@@ -224,8 +208,7 @@ Each component has its own version number. Only bump components that actually ch
 | `main` | Any significant release (tracks latest major feature) |
 | `controller` | Bitwig controller script changes |
 | `web` | Web server or API changes |
-| `roger` | Roger CLI changes |
-| `compose` | Compose CLI changes |
+| `compose` | Jeannie CLI changes |
 | `shared` | Shared type definitions changes |
 
 **Bump Strategy**:
@@ -246,9 +229,6 @@ The `package.json` files should also be updated when bumping versions (for npm c
 git clone <repo>
 cd jeannie
 npm install
-
-# Install Python dependencies (optional, for Roger config updates)
-pip install -r roger/requirements.txt
 ```
 
 ### Building
@@ -277,16 +257,22 @@ npm start
 # or
 node web/dist/server.js
 
-# Use Roger CLI
-python3 roger/roger.py --help
-python3 roger/roger.py hello
-python3 roger/roger.py update-config
+# Use Jeannie CLI
+cd compose && npm link  # Optional: makes 'jeannie' available globally
+jeannie --help
+jeannie health
+jeannie hello
 
 # Content search commands
-python3 roger/roger.py content search "acoustic snare" --fuzzy
-python3 roger/roger.py content search "piano" --type Preset
-python3 roger/roger.py content stats
-python3 roger/roger.py content rescan
+jeannie content search "acoustic snare" --fuzzy
+jeannie content search "piano" --type Preset
+jeannie content stats
+jeannie content rescan
+
+# Track management commands
+jeannie track list
+jeannie track create --name "Piano"
+jeannie track mute
 
 # Install controller in Bitwig
 mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS"
@@ -307,20 +293,10 @@ curl "http://localhost:3000/api/content/stats"
 curl "http://localhost:3000/api/content/types"
 curl "http://localhost:3000/api/content/search?q=piano&fuzzy=true"
 
-# Test config watching
-echo "version: 0.3.0
-roger:
-  name: roger
-  version: 0.1.0
-  timestamp: '$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'
-controller:
-  name: jeannie
-  enabled: true
-lastUpdated: '$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'" > /tmp/jeannie-config.yaml
-
-# Test Roger CLI
-python3 roger/roger.py health
-python3 roger/roger.py version
+# Test Jeannie CLI
+jeannie health
+jeannie version
+jeannie status
 ```
 
 ## Git Workflow
@@ -480,11 +456,17 @@ Use simple, consistent naming:
 | GET | `/api/hello` | Hello world with versions |
 | GET | `/api/version` | All component versions |
 | GET | `/api/config` | Current config |
-| GET | `/api/status` | Connection status (Bitwig + Roger) |
-| GET | `/api/roger` | Roger info from config |
+| GET | `/api/status` | Connection status (Bitwig) |
 | POST | `/api/bitwig/ping` | Bitwig heartbeat (deprecated - uses process check now) |
 | POST | `/api/bitwig/log` | Bitwig log forwarding |
-| POST | `/api/roger/command` | Roger command tracking |
+| GET | `/api/bitwig/tracks` | List all tracks |
+| POST | `/api/bitwig/tracks` | Create new track |
+| POST | `/api/bitwig/tracks/select` | Select track by index |
+| POST | `/api/bitwig/tracks/navigate` | Navigate tracks (next/prev/first/last) |
+| POST | `/api/bitwig/tracks/mute` | Mute/unmute track |
+| POST | `/api/bitwig/tracks/solo` | Solo/unsolo track |
+| POST | `/api/bitwig/tracks/volume` | Set track volume |
+| POST | `/api/bitwig/tracks/pan` | Set track pan |
 
 ### Content Index Endpoints
 
@@ -526,10 +508,6 @@ interface ApiResponse<T = unknown> {
 ```yaml
 # /tmp/jeannie-config.yaml
 version: 0.3.0
-roger:
-  name: roger
-  version: 0.1.0
-  timestamp: '2026-01-02T13:00:00.000Z'
 controller:
   name: jeannie
   enabled: true
@@ -779,7 +757,7 @@ npm install && npm run build && node web/dist/server.js
 npm run build:controller && cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"
 
 # Test everything
-curl http://localhost:3000/health && curl http://localhost:3000/api/status && python3 roger/roger.py version
+curl http://localhost:3000/health && curl http://localhost:3000/api/status && jeannie version
 
 # Clean slate
 rm -rf */dist */node_modules && npm install && npm run build
@@ -793,7 +771,7 @@ Add to `~/.zshrc` or `~/.bashrc`:
 alias jeannie-build='cd ~/jeannie && npm run build'
 alias jeannie-start='cd ~/jeannie && node web/dist/server.js'
 alias jeannie-install='cd ~/jeannie && mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS" && cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"'
-alias roger='python3 ~/jeannie/roger/roger.py'
+# jeannie CLI available after: cd ~/jeannie/compose && npm link
 ```
 
 ## Contributing
@@ -838,9 +816,9 @@ Claude: [Uses instrument knowledge, creates tracks, writes music, loads into Bit
 └───────────┼─────────────────────────────────────────────────────┘
             ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│              jeannie-compose CLI (Single Entrypoint)             │
+│                    jeannie CLI (Single Entrypoint)               │
 │                                                                  │
-│  jeannie-compose --abc ./song/ --validate --convert --load      │
+│  jeannie validate ./song/ && jeannie convert ./song/ && jeannie load ./song/
 │                                                                  │
 │  ┌─────────────────┐   ┌─────────────────┐   ┌───────────────┐ │
 │  │ ABC Validation  │ → │ ABC → MIDI      │ → │ MIDI          │ │
@@ -886,7 +864,7 @@ Q:1/4=120
 
 **Stage 1: ABC Validation**
 ```bash
-jeannie-compose validate-abc ./song/
+jeannie validate ./song/
 # Checks:
 # - Valid ABC syntax
 # - All parts have same bar count
@@ -896,14 +874,14 @@ jeannie-compose validate-abc ./song/
 
 **Stage 2: MIDI Conversion**
 ```bash
-jeannie-compose convert ./song/
+jeannie convert ./song/
 # Converts ABC → MIDI using abc2midi or similar
 # Outputs: ./song/*.mid
 ```
 
 **Stage 3: MIDI Validation**
 ```bash
-jeannie-compose validate-midi ./song/
+jeannie validate ./song/*.mid
 # Checks:
 # - Valid MIDI format
 # - All clips same bar count
@@ -913,9 +891,8 @@ jeannie-compose validate-midi ./song/
 
 **Stage 4: Bitwig Loading**
 ```bash
-jeannie-compose load ./song/ --mode clips
-# OR
-jeannie-compose load ./song/ --mode live
+jeannie load ./song/
+# Creates tracks and loads MIDI clips
 ```
 
 ### Instrument Selection Logic
@@ -981,7 +958,7 @@ All tools must have CLI interfaces that work standalone.
 jeannie/
 ├── compose/                    # New composition tools
 │   ├── src/
-│   │   ├── cli.ts             # jeannie-compose entrypoint
+│   │   ├── cli.ts             # jeannie CLI entrypoint
 │   │   ├── abcValidator.ts    # ABC validation
 │   │   ├── abcToMidi.ts       # ABC → MIDI conversion
 │   │   ├── midiValidator.ts   # MIDI validation

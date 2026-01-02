@@ -99,7 +99,7 @@ declare const host: {
   createPopupBrowser: () => any;
   createCursorTrack(id: string, name: string, numSends: number, numScenes: number, shouldFollowSelection: boolean): CursorTrack;
   createMainTrackBank(numTracks: number, numSends: number, numScenes: number): TrackBank;
-  getApplication(): Application;
+  createApplication(): Application;
 };
 
 // Java interop for file I/O (Nashorn provides access to Java classes)
@@ -119,22 +119,23 @@ const VERSIONS_FILE = CONFIG_DIR + '/versions.json';
 // Load version from versions.json (single source of truth)
 function loadVersion(): string {
   try {
-    const File = Java.type('java.io.File');
-    const Scanner = Java.type('java.util.Scanner');
+    const Files = Java.type('java.nio.file.Files');
+    const Paths = Java.type('java.nio.file.Paths');
 
-    const file = new File(VERSIONS_FILE);
-    if (!file.exists()) {
-      return '0.9.0'; // Fallback if versions.json not found
+    const filePath = Paths.get(VERSIONS_FILE);
+    if (!Files.exists(filePath)) {
+      return '0.10.0'; // Fallback if versions.json not found
     }
 
-    const scanner = new Scanner(file).useDelimiter('\\Z');
-    const content = scanner.hasNext() ? scanner.next() : '';
-    scanner.close();
+    // Read all bytes and convert to string - no constructor ambiguity
+    const bytes = Files.readAllBytes(filePath);
+    const JavaString = Java.type('java.lang.String');
+    const content = new JavaString(bytes, 'UTF-8');
 
     const versions = JSON.parse(content);
-    return versions.controller || '0.9.0';
+    return versions.controller || '0.10.0';
   } catch (e) {
-    return '0.9.0'; // Fallback on error
+    return '0.10.0'; // Fallback on error
   }
 }
 
@@ -435,20 +436,21 @@ interface CommandResponse {
   data?: any;
 }
 
-// Read JSON file
+// Read JSON file using nio.file API (avoids all constructor ambiguity)
 function readJSONFile(path: string): any {
   try {
-    const File = Java.type('java.io.File');
-    const Scanner = Java.type('java.util.Scanner');
+    const Files = Java.type('java.nio.file.Files');
+    const Paths = Java.type('java.nio.file.Paths');
 
-    const file = new File(path);
-    if (!file.exists()) {
+    const filePath = Paths.get(path);
+    if (!Files.exists(filePath)) {
       return null;
     }
 
-    const scanner = new Scanner(file).useDelimiter('\\Z');
-    const content = scanner.hasNext() ? scanner.next() : '';
-    scanner.close();
+    // Read all bytes and convert to string - no constructor ambiguity
+    const bytes = Files.readAllBytes(filePath);
+    const JavaString = Java.type('java.lang.String');
+    const content = new JavaString(bytes, 'UTF-8');
 
     return JSON.parse(content);
   } catch (e) {
@@ -983,7 +985,7 @@ function init(): void {
     log('Initializing track management...');
 
     // Get application for creating tracks
-    application = host.getApplication();
+    application = host.createApplication();
     log('Application API initialized');
 
     // Create cursor track for track selection and manipulation

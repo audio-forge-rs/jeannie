@@ -3,7 +3,7 @@
 A Bitwig Studio controller ecosystem with web interface and CLI tools.
 
 **Vendor**: Audio Forge RS
-**Version**: 0.3.0
+**Version**: 0.10.0
 **Status**: Active Development
 
 ## Components
@@ -15,40 +15,14 @@ TypeScript controller script for Bitwig Studio with real-time connection trackin
 Node.js/Express server providing:
 - REST API for status, configuration, and version info
 - Real-time web UI dashboard
-- Connection status tracking for Bitwig and Roger
+- Connection status tracking for Bitwig
 - YAML config file watching (`/tmp/jeannie-config.yaml`)
 
-### Roger (CLI Tool)
-Python command-line tool for interacting with Jeannie via REST API.
-
-### Jeannie Compose (CLI Tool)
-TypeScript CLI for ABC notation → MIDI → Bitwig composition workflow.
-
-## CLI Tools: Roger vs Compose
-
-Jeannie has two CLI tools with **distinct purposes**:
-
-| Tool | Language | Purpose |
-|------|----------|---------|
-| **roger** | Python | General-purpose Jeannie CLI: health, status, content search, **track management** |
-| **jeannie-compose** | TypeScript | Specialized ABC→MIDI composition pipeline: validate, convert, load |
-
-Think of it like `git` vs `git-lfs`:
-- **Roger** is the main CLI for interacting with Jeannie/Bitwig
-- **Compose** is a specialized extension for the music composition workflow
-
-```bash
-# Roger - general Bitwig control
-roger health                    # Check server health
-roger track list               # List all tracks
-roger track create --name Piano # Create track
-roger content search "strings"  # Search content
-
-# Compose - music composition workflow
-jeannie-compose validate ./song.abc   # Validate ABC notation
-jeannie-compose convert ./song.abc    # Convert to MIDI
-jeannie-compose load ./song.mid       # Load into Bitwig
-```
+### Jeannie CLI
+Unified TypeScript command-line tool for:
+- Bitwig control (health, status, tracks, content search)
+- ABC notation → MIDI composition workflow
+- Full REST API access
 
 ## Quick Start
 
@@ -68,21 +42,54 @@ node web/dist/server.js
 mkdir -p "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS"
 cp controller/dist/jeannie.control.js "$HOME/Documents/Bitwig Studio/Controller Scripts/Audio Forge RS/"
 
-# Use Roger CLI
-python3 roger/roger.py --version
-python3 roger/roger.py hello
+# Use Jeannie CLI
+cd compose && npm link  # Optional: makes 'jeannie' available globally
+jeannie --help
+jeannie health
+jeannie track list
+jeannie content search "strings" --fuzzy
+```
+
+## CLI Usage
+
+```bash
+# Server health & status
+jeannie health              # Check server health
+jeannie status              # Show Bitwig connection status
+jeannie version             # Show all component versions
+
+# Track management
+jeannie track list          # List all tracks
+jeannie track create --name "Piano" --type instrument
+jeannie track select 0      # Select first track
+jeannie track next          # Move to next track
+jeannie track mute          # Mute current track
+jeannie track volume 80     # Set volume to 80%
+
+# Content search
+jeannie content search "strings" --fuzzy
+jeannie content search "piano" --type Preset
+jeannie content stats       # Show content statistics
+jeannie content types       # List content types
+
+# ABC notation & MIDI
+jeannie validate ./song.abc     # Validate ABC notation
+jeannie convert ./song.abc      # Convert ABC to MIDI
+jeannie load ./song.mid         # Load MIDI into Bitwig
+
+# Global options
+jeannie --api-url http://192.168.1.10:3000 health  # Custom API URL
+jeannie --json health           # Output raw JSON
 ```
 
 ## Features
 
-- ✅ Real-time web dashboard at `http://localhost:3000`
-- ✅ Connection status tracking (30-second timeout)
-- ✅ YAML config file watching with auto-reload
-- ✅ REST API with health checks and version info
-- ✅ Roger CLI for configuration and control
-- ✅ TypeScript throughout for type safety
-- ✅ Vanilla JavaScript web UI (no build step)
-- ✅ File logging for Bitwig controller (`~/.config/jeannie/logs/controller.log`)
+- Real-time web dashboard at `http://localhost:3000`
+- Connection status tracking (30-second timeout)
+- YAML config file watching with auto-reload
+- REST API with health checks and version info
+- Unified TypeScript CLI for all operations
+- File logging for Bitwig controller (`~/.config/jeannie/logs/controller.log`)
 
 ## Logging
 
@@ -103,7 +110,7 @@ tail -f ~/.config/jeannie/logs/controller.log
 jeannie/
 ├── controller/     # Bitwig controller (TypeScript → JS)
 ├── web/           # Express server + web UI
-├── roger/         # Python CLI tool
+├── compose/       # Unified CLI (TypeScript)
 └── shared/        # Shared TypeScript types
 ```
 
@@ -115,18 +122,17 @@ jeannie/
 | `GET /health` | Server health check |
 | `GET /api/hello` | Hello world with versions |
 | `GET /api/version` | All component versions |
-| `GET /api/status` | Bitwig & Roger connection status |
+| `GET /api/status` | Bitwig connection status |
 | `GET /api/config` | Current configuration |
-| `POST /api/bitwig/ping` | Bitwig heartbeat |
-| `POST /api/bitwig/log` | Bitwig controller logging |
-| `POST /api/roger/command` | Roger command tracking |
+| `GET /api/bitwig/tracks` | List all tracks |
+| `POST /api/bitwig/tracks` | Create new track |
+| `GET /api/content/search` | Search content |
 
 ## Documentation
 
 - [CLAUDE.md](./CLAUDE.md) - Development guidelines
 - [QUICKSTART.md](./QUICKSTART.md) - Quick start guide
 - [controller/README.md](./controller/README.md) - Bitwig controller docs
-- [roger/README.md](./roger/README.md) - Roger CLI docs
 
 ## Development
 

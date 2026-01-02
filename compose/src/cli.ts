@@ -1,16 +1,22 @@
 #!/usr/bin/env node
 /**
- * Jeannie Compose CLI
+ * Jeannie CLI
  * Vendor: Audio Forge RS
  *
- * Single entrypoint for ABC notation -> MIDI -> Bitwig workflow.
- * Version is read from /versions.json (single source of truth)
+ * Unified CLI for Jeannie Bitwig Controller ecosystem.
+ * Combines general control (health, status, content, track) with
+ * composition tools (ABC validation, MIDI conversion).
  *
  * Usage:
- *   jeannie-compose --abc ./song/ --validate --convert --load
- *   jeannie-compose validate ./song/piano.abc
- *   jeannie-compose convert ./song/ --output ./midi/
- *   jeannie-compose load ./midi/ --project "My Song"
+ *   jeannie [global-options] <command> [command-options]
+ *
+ * Examples:
+ *   jeannie health
+ *   jeannie track list
+ *   jeannie track create --name "Piano" --type instrument
+ *   jeannie content search "strings" --fuzzy
+ *   jeannie validate ./song.abc
+ *   jeannie convert ./song.abc --output ./midi/
  */
 
 import { Command } from 'commander';
@@ -25,15 +31,779 @@ const VERSIONS_FILE = path.join(__dirname, '..', '..', 'versions.json');
 const versions = JSON.parse(fs.readFileSync(VERSIONS_FILE, 'utf8'));
 const VERSION = versions.compose;
 
+// API configuration
+const DEFAULT_API_URL = 'http://localhost:3000';
+
+interface ApiResponse {
+  success: boolean;
+  data?: any;
+  error?: string;
+  timestamp?: string;
+}
+
+// =============================================================================
+// API Client
+// =============================================================================
+
+class JeannieClient {
+  private apiUrl: string;
+
+  constructor(apiUrl: string = DEFAULT_API_URL) {
+    this.apiUrl = apiUrl;
+  }
+
+  async request(endpoint: string, method: string = 'GET', body?: any): Promise<ApiResponse> {
+    try {
+      const response = await fetch(`${this.apiUrl}${endpoint}`, {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        body: body ? JSON.stringify(body) : undefined
+      });
+      return await response.json() as ApiResponse;
+    } catch (error) {
+      return { success: false, error: `API request failed: ${error}` };
+    }
+  }
+
+  // Health & Status
+  async hello(): Promise<ApiResponse> {
+    return this.request('/api/hello');
+  }
+
+  async health(): Promise<ApiResponse> {
+    return this.request('/health');
+  }
+
+  async status(): Promise<ApiResponse> {
+    return this.request('/api/status');
+  }
+
+  async version(): Promise<ApiResponse> {
+    return this.request('/api/version');
+  }
+
+  async config(): Promise<ApiResponse> {
+    return this.request('/api/config');
+  }
+
+  // Content
+  async contentSearch(query: string, options: {
+    fuzzy?: boolean;
+    type?: string;
+    creator?: string;
+    limit?: number;
+  } = {}): Promise<ApiResponse> {
+    const params = new URLSearchParams({ q: query });
+    if (options.fuzzy) params.set('fuzzy', 'true');
+    if (options.type) params.set('type', options.type);
+    if (options.creator) params.set('creator', options.creator);
+    if (options.limit) params.set('limit', options.limit.toString());
+    return this.request(`/api/content/search?${params}`);
+  }
+
+  async contentStats(): Promise<ApiResponse> {
+    return this.request('/api/content/stats');
+  }
+
+  async contentTypes(): Promise<ApiResponse> {
+    return this.request('/api/content/types');
+  }
+
+  async contentCreators(): Promise<ApiResponse> {
+    return this.request('/api/content/creators');
+  }
+
+  async contentList(options: {
+    type?: string;
+    creator?: string;
+    category?: string;
+    limit?: number;
+    offset?: number;
+  } = {}): Promise<ApiResponse> {
+    const params = new URLSearchParams();
+    if (options.type) params.set('type', options.type);
+    if (options.creator) params.set('creator', options.creator);
+    if (options.category) params.set('category', options.category);
+    if (options.limit) params.set('limit', options.limit.toString());
+    if (options.offset) params.set('offset', options.offset.toString());
+    return this.request(`/api/content?${params}`);
+  }
+
+  async contentCategories(): Promise<ApiResponse> {
+    return this.request('/api/content/categories');
+  }
+
+  async contentStatus(): Promise<ApiResponse> {
+    return this.request('/api/content/status');
+  }
+
+  async contentRescan(): Promise<ApiResponse> {
+    return this.request('/api/content/rescan', 'POST');
+  }
+
+  // Track Management
+  async trackList(): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks');
+  }
+
+  async trackCurrent(): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/current');
+  }
+
+  async trackCreate(type: string, name?: string, position: number = -1): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks', 'POST', { type, name, position });
+  }
+
+  async trackSelect(index: number): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/select', 'POST', { index });
+  }
+
+  async trackNavigate(direction: string): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/navigate', 'POST', { direction });
+  }
+
+  async trackRename(name: string): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/rename', 'POST', { name });
+  }
+
+  async trackMute(mute: boolean): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/mute', 'POST', { mute });
+  }
+
+  async trackSolo(solo: boolean): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/solo', 'POST', { solo });
+  }
+
+  async trackVolume(volume: number): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/volume', 'POST', { volume });
+  }
+
+  async trackPan(pan: number): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/pan', 'POST', { pan });
+  }
+
+  async trackDevice(deviceId: string, deviceType: string): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/device', 'POST', { deviceId, deviceType });
+  }
+}
+
+// =============================================================================
+// Output Helpers
+// =============================================================================
+
+function printSuccess(message: string): void {
+  console.log(`✓ ${message}`);
+}
+
+function printError(message: string): void {
+  console.error(`✗ ${message}`);
+}
+
+function printJson(data: any): void {
+  console.log(JSON.stringify(data, null, 2));
+}
+
+// =============================================================================
+// CLI Setup
+// =============================================================================
+
 const program = new Command();
 
 program
-  .name('jeannie-compose')
-  .description('ABC notation to MIDI to Bitwig composition pipeline')
-  .version(VERSION);
+  .name('jeannie')
+  .description('Jeannie Bitwig Controller CLI')
+  .version(VERSION)
+  .option('--api-url <url>', 'API server URL', DEFAULT_API_URL)
+  .option('--json', 'Output raw JSON');
+
+// Get client from program options
+function getClient(): JeannieClient {
+  const opts = program.opts();
+  return new JeannieClient(opts.apiUrl);
+}
+
+function shouldOutputJson(): boolean {
+  return program.opts().json;
+}
 
 // =============================================================================
-// Validate Command
+// Health & Status Commands
+// =============================================================================
+
+program
+  .command('hello')
+  .description('Get hello world message from Jeannie')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.hello();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess('Hello from Jeannie!');
+      if (response.data?.message) {
+        console.log(`  ${response.data.message}`);
+      }
+      if (response.data?.version) {
+        console.log(`  Server: v${response.data.version}`);
+      }
+    } else {
+      printError(response.error || 'Hello failed');
+      process.exit(1);
+    }
+  });
+
+program
+  .command('health')
+  .description('Check Jeannie server health')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.health();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess('Server is healthy');
+      console.log(`  Version: ${response.data?.version}`);
+      console.log(`  Uptime: ${response.data?.uptime}s`);
+    } else {
+      printError(response.error || 'Health check failed');
+      process.exit(1);
+    }
+  });
+
+program
+  .command('status')
+  .description('Show connection status (Bitwig & clients)')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.status();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      const { bitwig, roger } = response.data;
+      console.log('Connection Status:');
+      console.log(`  Bitwig: ${bitwig?.connected ? '✓ Connected' : '✗ Disconnected'}`);
+      if (bitwig?.controllerVersion) {
+        console.log(`    Controller: v${bitwig.controllerVersion}`);
+      }
+    } else {
+      printError(response.error || 'Status check failed');
+      process.exit(1);
+    }
+  });
+
+program
+  .command('version')
+  .description('Show all component versions')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.version();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      console.log('Versions:');
+      console.log(`  CLI: ${VERSION}`);
+      console.log(`  Server: ${response.data?.jeannie}`);
+      console.log(`  Controller: ${response.data?.controller}`);
+    } else {
+      printError(response.error || 'Version check failed');
+      process.exit(1);
+    }
+  });
+
+program
+  .command('config')
+  .description('Show current configuration')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.config();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printJson(response.data);
+    } else {
+      printError(response.error || 'Config fetch failed');
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Content Commands
+// =============================================================================
+
+const contentCmd = program
+  .command('content')
+  .description('Content search and management');
+
+contentCmd
+  .command('search <query>')
+  .description('Search content by name')
+  .option('--fuzzy', 'Enable fuzzy matching')
+  .option('--type <type>', 'Filter by type (Device, Preset, Sample)')
+  .option('--creator <creator>', 'Filter by creator')
+  .option('--limit <n>', 'Max results', '20')
+  .action(async (query: string, options) => {
+    const client = getClient();
+    const response = await client.contentSearch(query, {
+      fuzzy: options.fuzzy,
+      type: options.type,
+      creator: options.creator,
+      limit: parseInt(options.limit)
+    });
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      const results = response.data?.results || [];
+      printSuccess(`Found ${response.data?.total || 0} results for "${query}"`);
+      console.log();
+      for (const item of results) {
+        const score = item.score?.toFixed(2) || '1.00';
+        console.log(`  [${score}] ${item.name} (${item.contentType})${item.creator ? ` - ${item.creator}` : ''}`);
+      }
+    } else {
+      printError(response.error || 'Search failed');
+      process.exit(1);
+    }
+  });
+
+contentCmd
+  .command('stats')
+  .description('Show content statistics')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.contentStats();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess('Content Statistics');
+      printJson(response.data);
+    } else {
+      printError(response.error || 'Stats fetch failed');
+      process.exit(1);
+    }
+  });
+
+contentCmd
+  .command('types')
+  .description('List available content types')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.contentTypes();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess('Content Types');
+      for (const type of response.data || []) {
+        console.log(`  - ${type}`);
+      }
+    } else {
+      printError(response.error || 'Types fetch failed');
+      process.exit(1);
+    }
+  });
+
+contentCmd
+  .command('creators')
+  .description('List available creators')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.contentCreators();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      const creators = response.data || [];
+      printSuccess(`${creators.length} creators`);
+      for (const creator of creators.slice(0, 50)) {
+        console.log(`  - ${creator}`);
+      }
+      if (creators.length > 50) {
+        console.log(`  ... and ${creators.length - 50} more`);
+      }
+    } else {
+      printError(response.error || 'Creators fetch failed');
+      process.exit(1);
+    }
+  });
+
+contentCmd
+  .command('list')
+  .description('List content with filters')
+  .option('--type <type>', 'Filter by content type')
+  .option('--creator <creator>', 'Filter by creator')
+  .option('--category <category>', 'Filter by category')
+  .option('--limit <n>', 'Max results', '20')
+  .option('--offset <n>', 'Offset for pagination', '0')
+  .action(async (options) => {
+    const client = getClient();
+    const response = await client.contentList({
+      type: options.type,
+      creator: options.creator,
+      category: options.category,
+      limit: parseInt(options.limit),
+      offset: parseInt(options.offset)
+    });
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      const results = response.data?.results || [];
+      printSuccess(`${response.data?.total || 0} items (showing ${results.length})`);
+      console.log();
+      for (const item of results) {
+        console.log(`  ${item.name} (${item.contentType})${item.creator ? ` - ${item.creator}` : ''}`);
+      }
+    } else {
+      printError(response.error || 'List failed');
+      process.exit(1);
+    }
+  });
+
+contentCmd
+  .command('categories')
+  .description('List available categories')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.contentCategories();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      const categories = response.data || [];
+      printSuccess(`${categories.length} categories`);
+      for (const category of categories.slice(0, 50)) {
+        console.log(`  - ${category}`);
+      }
+      if (categories.length > 50) {
+        console.log(`  ... and ${categories.length - 50} more`);
+      }
+    } else {
+      printError(response.error || 'Categories fetch failed');
+      process.exit(1);
+    }
+  });
+
+contentCmd
+  .command('status')
+  .description('Get content index status')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.contentStatus();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess('Content Index Status');
+      printJson(response.data);
+    } else {
+      printError(response.error || 'Status fetch failed');
+      process.exit(1);
+    }
+  });
+
+contentCmd
+  .command('rescan')
+  .description('Trigger content rescan')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.contentRescan();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess('Rescan requested');
+      console.log('  Controller will detect within 10 seconds');
+    } else {
+      printError(response.error || 'Rescan request failed');
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// Track Commands
+// =============================================================================
+
+const trackCmd = program
+  .command('track')
+  .description('Track management');
+
+trackCmd
+  .command('list')
+  .description('List all tracks in project')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.trackList();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      const tracks = response.data?.tracks || [];
+      printSuccess(`${tracks.length} track(s) in project`);
+      console.log();
+      for (const track of tracks) {
+        const muted = track.muted ? '[M]' : '   ';
+        const soloed = track.soloed ? '[S]' : '   ';
+        console.log(`  ${track.index}: ${muted}${soloed} ${track.name}`);
+      }
+    } else {
+      printError(response.error || 'Track list failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('current')
+  .description('Show current track info')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.trackCurrent();
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess('Current track');
+      console.log(`  Name: ${response.data?.name}`);
+      console.log(`  Position: ${response.data?.position}`);
+      console.log(`  Muted: ${response.data?.muted}`);
+      console.log(`  Soloed: ${response.data?.soloed}`);
+    } else {
+      printError(response.error || 'Track info failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('create')
+  .description('Create a new track')
+  .option('--type <type>', 'Track type: instrument, audio, effect', 'instrument')
+  .option('--name <name>', 'Track name')
+  .option('--position <n>', 'Insert position (-1 for end)', '-1')
+  .action(async (options) => {
+    const client = getClient();
+    const response = await client.trackCreate(
+      options.type,
+      options.name,
+      parseInt(options.position)
+    );
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Created ${options.type} track${options.name ? `: ${options.name}` : ''}`);
+    } else {
+      printError(response.error || 'Track creation failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('select <index>')
+  .description('Select track by index')
+  .action(async (index: string) => {
+    const client = getClient();
+    const response = await client.trackSelect(parseInt(index));
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Selected track ${index}: ${response.data?.name}`);
+    } else {
+      printError(response.error || 'Track selection failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('next')
+  .description('Select next track')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.trackNavigate('next');
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Moved to: ${response.data?.name}`);
+    } else {
+      printError(response.error || 'Navigation failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('prev')
+  .description('Select previous track')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.trackNavigate('previous');
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Moved to: ${response.data?.name}`);
+    } else {
+      printError(response.error || 'Navigation failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('first')
+  .description('Select first track')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.trackNavigate('first');
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Moved to first track: ${response.data?.name}`);
+    } else {
+      printError(response.error || 'Navigation failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('last')
+  .description('Select last track')
+  .action(async () => {
+    const client = getClient();
+    const response = await client.trackNavigate('last');
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Moved to last track: ${response.data?.name}`);
+    } else {
+      printError(response.error || 'Navigation failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('rename <name>')
+  .description('Rename current track')
+  .action(async (name: string) => {
+    const client = getClient();
+    const response = await client.trackRename(name);
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Renamed track to: ${name}`);
+    } else {
+      printError(response.error || 'Rename failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('mute')
+  .description('Mute current track')
+  .option('--off', 'Unmute instead')
+  .action(async (options) => {
+    const client = getClient();
+    const mute = !options.off;
+    const response = await client.trackMute(mute);
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Track ${mute ? 'muted' : 'unmuted'}`);
+    } else {
+      printError(response.error || 'Mute failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('solo')
+  .description('Solo current track')
+  .option('--off', 'Unsolo instead')
+  .action(async (options) => {
+    const client = getClient();
+    const solo = !options.off;
+    const response = await client.trackSolo(solo);
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Track solo ${solo ? 'enabled' : 'disabled'}`);
+    } else {
+      printError(response.error || 'Solo failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('volume <value>')
+  .description('Set track volume (0-100 or 0.0-1.0)')
+  .action(async (value: string) => {
+    const client = getClient();
+    let volume = parseFloat(value);
+    if (volume > 1) volume = volume / 100; // Treat as percentage
+    volume = Math.max(0, Math.min(1, volume));
+
+    const response = await client.trackVolume(volume);
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Track volume set to ${Math.round(volume * 100)}%`);
+    } else {
+      printError(response.error || 'Volume change failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('pan <value>')
+  .description('Set track pan (-1.0 left to 1.0 right)')
+  .action(async (value: string) => {
+    const client = getClient();
+    const pan = Math.max(-1, Math.min(1, parseFloat(value)));
+
+    const response = await client.trackPan(pan);
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      const label = pan === 0 ? 'center' : (pan < 0 ? `${Math.abs(Math.round(pan * 100))}% left` : `${Math.round(pan * 100)}% right`);
+      printSuccess(`Track pan set to ${label}`);
+    } else {
+      printError(response.error || 'Pan change failed');
+      process.exit(1);
+    }
+  });
+
+trackCmd
+  .command('device <deviceId>')
+  .description('Insert device into current track')
+  .option('--type <type>', 'Device type: vst3, vst2, bitwig', 'vst3')
+  .action(async (deviceId: string, options) => {
+    const client = getClient();
+    const response = await client.trackDevice(deviceId, options.type);
+
+    if (shouldOutputJson()) {
+      printJson(response);
+    } else if (response.success) {
+      printSuccess(`Device inserted: ${deviceId} (${options.type})`);
+    } else {
+      printError(response.error || 'Device insertion failed');
+      process.exit(1);
+    }
+  });
+
+// =============================================================================
+// ABC/MIDI Commands (Composition)
 // =============================================================================
 
 program
@@ -42,10 +812,6 @@ program
   .option('--strict', 'Enable strict validation (warnings as errors)')
   .option('--bars', 'Check that all parts have the same number of bars')
   .action(async (inputPath: string, options) => {
-    console.log('='.repeat(60));
-    console.log('Jeannie Compose - ABC Validator');
-    console.log('='.repeat(60));
-
     const stats = fs.statSync(inputPath);
 
     if (stats.isDirectory()) {
@@ -55,14 +821,13 @@ program
       });
 
       if (result.valid) {
-        console.log('\n[OK] All ABC files are valid');
+        printSuccess('All ABC files are valid');
         if (result.warnings.length > 0) {
           console.log(`\nWarnings (${result.warnings.length}):`);
           result.warnings.forEach(w => console.log(`  - ${w}`));
         }
-        process.exit(0);
       } else {
-        console.error('\n[ERROR] Validation failed:');
+        printError('Validation failed');
         result.errors.forEach(e => console.error(`  - ${e}`));
         process.exit(1);
       }
@@ -72,40 +837,31 @@ program
       });
 
       if (result.valid) {
-        console.log(`\n[OK] ${inputPath} is valid`);
+        printSuccess(`${inputPath} is valid`);
         console.log(`  Title: ${result.metadata?.title || 'Unknown'}`);
         console.log(`  Key: ${result.metadata?.key || 'Unknown'}`);
         console.log(`  Meter: ${result.metadata?.meter || 'Unknown'}`);
         console.log(`  Bars: ${result.barCount || 'Unknown'}`);
-        process.exit(0);
       } else {
-        console.error(`\n[ERROR] ${inputPath} is invalid:`);
+        printError(`${inputPath} is invalid`);
         result.errors.forEach(e => console.error(`  - ${e}`));
         process.exit(1);
       }
     }
   });
 
-// =============================================================================
-// Parse Command (for debugging)
-// =============================================================================
-
 program
   .command('parse <file>')
   .description('Parse and display ABC notation structure')
   .action(async (file: string) => {
-    console.log('='.repeat(60));
-    console.log('Jeannie Compose - ABC Parser');
-    console.log('='.repeat(60));
-
     const result = parseAbcFile(file);
 
     if (result.error) {
-      console.error(`\n[ERROR] ${result.error}`);
+      printError(result.error);
       process.exit(1);
     }
 
-    console.log('\nMetadata:');
+    console.log('Metadata:');
     console.log(`  Title: ${result.metadata?.title}`);
     console.log(`  Composer: ${result.metadata?.composer || 'Unknown'}`);
     console.log(`  Key: ${result.metadata?.key}`);
@@ -117,13 +873,7 @@ program
       console.log(`  [${i + 1}] ${voice.id}: ${voice.name || 'Unnamed'}`);
       console.log(`      Bars: ${voice.barCount}`);
     });
-
-    process.exit(0);
   });
-
-// =============================================================================
-// Convert Command
-// =============================================================================
 
 program
   .command('convert <path>')
@@ -133,36 +883,32 @@ program
   .option('--bpm <number>', 'Override tempo (BPM)', parseInt)
   .option('--transpose <semitones>', 'Transpose by semitones', parseInt)
   .action(async (inputPath: string, options) => {
-    console.log('='.repeat(60));
-    console.log('Jeannie Compose - ABC to MIDI Converter');
-    console.log('='.repeat(60));
-
     // Validate first if requested
     if (options.validate) {
-      console.log('\n[1/2] Validating ABC...');
+      console.log('Validating ABC...');
       const stats = fs.statSync(inputPath);
 
       if (stats.isDirectory()) {
         const valResult = await validateAbcDirectory(inputPath, { checkBars: true });
         if (!valResult.valid) {
-          console.error('\n[ERROR] Validation failed:');
+          printError('Validation failed');
           valResult.errors.forEach(e => console.error(`  - ${e}`));
           process.exit(1);
         }
-        console.log('  [OK] Validation passed');
+        printSuccess('Validation passed');
       } else {
         const valResult = await validateAbcFile(inputPath);
         if (!valResult.valid) {
-          console.error('\n[ERROR] Validation failed:');
+          printError('Validation failed');
           valResult.errors.forEach(e => console.error(`  - ${e}`));
           process.exit(1);
         }
-        console.log('  [OK] Validation passed');
+        printSuccess('Validation passed');
       }
     }
 
     // Convert
-    console.log(options.validate ? '\n[2/2] Converting to MIDI...' : '\nConverting to MIDI...');
+    console.log('Converting to MIDI...');
 
     const stats = fs.statSync(inputPath);
     const conversionOptions = {
@@ -189,7 +935,6 @@ program
         process.exit(1);
       }
     } else {
-      // Determine output path
       let outputPath = options.output;
       if (outputPath && fs.existsSync(outputPath) && fs.statSync(outputPath).isDirectory()) {
         const baseName = path.basename(inputPath, '.abc');
@@ -202,80 +947,41 @@ program
       });
 
       if (result.success) {
-        console.log(`\n[OK] Converted successfully!`);
+        printSuccess('Converted successfully');
         console.log(`  Output: ${result.outputPath}`);
         console.log(`  Tracks: ${result.trackCount}`);
         console.log(`  Notes: ${result.noteCount}`);
-        console.log(`  Bars: ${result.durationBars || 'Unknown'}`);
       } else {
-        console.error(`\n[ERROR] Conversion failed: ${result.error}`);
+        printError(`Conversion failed: ${result.error}`);
         process.exit(1);
       }
     }
-
-    process.exit(0);
   });
-
-// =============================================================================
-// Load Command - Create tracks in Bitwig
-// =============================================================================
-
-const JEANNIE_API_URL = process.env.JEANNIE_API_URL || 'http://localhost:3000';
-
-interface ApiResponse {
-  success: boolean;
-  data?: any;
-  error?: string;
-}
-
-async function callJeannieApi(endpoint: string, method: string = 'GET', body?: any): Promise<ApiResponse> {
-  try {
-    const response = await fetch(`${JEANNIE_API_URL}${endpoint}`, {
-      method,
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-    return await response.json() as ApiResponse;
-  } catch (error) {
-    return { success: false, error: `API call failed: ${error}` };
-  }
-}
-
-async function checkBitwigConnection(): Promise<boolean> {
-  const status = await callJeannieApi('/api/status');
-  return status.success && status.data?.bitwig?.connected;
-}
 
 program
   .command('load <path>')
-  .description('Load MIDI files into Bitwig via controller')
-  .option('-p, --project <name>', 'Project name')
-  .option('--create-tracks', 'Create instrument tracks automatically')
+  .description('Load MIDI files into Bitwig')
   .option('--dry-run', 'Show what would be done without making changes')
   .action(async (inputPath: string, options) => {
-    console.log('='.repeat(60));
-    console.log('Jeannie Compose - Bitwig Loader');
-    console.log('='.repeat(60));
+    const client = getClient();
 
-    // Check if Bitwig is connected
-    console.log('\nChecking Bitwig connection...');
-    const connected = await checkBitwigConnection();
+    // Check Bitwig connection
+    console.log('Checking Bitwig connection...');
+    const status = await client.status();
 
-    if (!connected) {
-      console.error('\n[ERROR] Bitwig is not running or controller not loaded');
-      console.error('Please ensure:');
-      console.error('  1. Bitwig Studio is running');
-      console.error('  2. Jeannie controller is enabled in Settings > Controllers');
-      console.error('  3. Jeannie web server is running (npm start in web/)');
+    if (!status.success || !status.data?.bitwig?.connected) {
+      printError('Bitwig is not running or controller not loaded');
+      console.log('Please ensure:');
+      console.log('  1. Bitwig Studio is running');
+      console.log('  2. Jeannie controller is enabled');
+      console.log('  3. Jeannie web server is running');
       process.exit(1);
     }
-    console.log('  [OK] Bitwig connected');
+    printSuccess('Bitwig connected');
 
-    // Check input path
+    // Find MIDI files
     if (!fs.existsSync(inputPath)) {
-      console.error(`\n[ERROR] Path not found: ${inputPath}`);
+      printError(`Path not found: ${inputPath}`);
       process.exit(1);
     }
 
@@ -283,7 +989,6 @@ program
     const midiFiles: string[] = [];
 
     if (stats.isDirectory()) {
-      // Find all MIDI files in directory
       const entries = fs.readdirSync(inputPath);
       for (const entry of entries) {
         if (entry.endsWith('.mid') || entry.endsWith('.midi')) {
@@ -293,20 +998,19 @@ program
     } else if (inputPath.endsWith('.mid') || inputPath.endsWith('.midi')) {
       midiFiles.push(inputPath);
     } else if (inputPath.endsWith('.abc')) {
-      // Convert ABC to MIDI first
-      console.log('\nConverting ABC to MIDI...');
+      console.log('Converting ABC to MIDI...');
       const result = await convertAbcFileToMidi(inputPath);
       if (result.success && result.outputPath) {
         midiFiles.push(result.outputPath);
-        console.log(`  [OK] Converted to: ${result.outputPath}`);
+        printSuccess(`Converted to: ${result.outputPath}`);
       } else {
-        console.error(`\n[ERROR] Failed to convert ABC: ${result.error}`);
+        printError(`Failed to convert ABC: ${result.error}`);
         process.exit(1);
       }
     }
 
     if (midiFiles.length === 0) {
-      console.error('\n[ERROR] No MIDI files found');
+      printError('No MIDI files found');
       process.exit(1);
     }
 
@@ -320,73 +1024,35 @@ program
         console.log(`  - Instrument track: "${trackName}"`);
       }
       console.log('\nUse without --dry-run to actually create tracks.');
-      process.exit(0);
+      return;
     }
 
-    // Create tracks for each MIDI file
+    // Create tracks
     console.log('\nCreating tracks in Bitwig...');
     let successCount = 0;
 
     for (const midiFile of midiFiles) {
       const trackName = path.basename(midiFile, path.extname(midiFile));
-      console.log(`  Creating track: "${trackName}"...`);
+      console.log(`  Creating: "${trackName}"...`);
 
-      const result = await callJeannieApi('/api/bitwig/tracks', 'POST', {
-        type: 'instrument',
-        name: trackName
-      });
+      const result = await client.trackCreate('instrument', trackName);
 
       if (result.success) {
-        console.log(`    [OK] Track created`);
+        console.log(`    ✓ Created`);
         successCount++;
       } else {
-        console.error(`    [FAIL] ${result.error}`);
+        console.error(`    ✗ ${result.error}`);
       }
     }
 
-    console.log(`\n${successCount}/${midiFiles.length} tracks created successfully`);
+    console.log(`\n${successCount}/${midiFiles.length} tracks created`);
     console.log('\nNext steps:');
-    console.log('  1. Select instruments for each track in Bitwig');
-    console.log('  2. Import MIDI clips manually (drag & drop)');
-    console.log('  3. Or use Bitwig\'s File > Import MIDI feature');
+    console.log('  1. Select instruments for each track');
+    console.log('  2. Import MIDI clips (drag & drop or File > Import)');
 
-    process.exit(successCount === midiFiles.length ? 0 : 1);
-  });
-
-// =============================================================================
-// Full Pipeline Command
-// =============================================================================
-
-program
-  .command('pipeline <path>')
-  .description('Run full ABC -> MIDI -> Bitwig pipeline')
-  .option('--validate', 'Validate ABC files first')
-  .option('--convert', 'Convert to MIDI')
-  .option('--load', 'Load into Bitwig')
-  .option('-o, --output <dir>', 'Output directory for MIDI files')
-  .option('-p, --project <name>', 'Bitwig project name')
-  .action(async (inputPath: string, options) => {
-    console.log('='.repeat(60));
-    console.log('Jeannie Compose - Full Pipeline');
-    console.log('='.repeat(60));
-
-    const steps = [];
-    if (options.validate) steps.push('validate');
-    if (options.convert) steps.push('convert');
-    if (options.load) steps.push('load');
-
-    console.log(`\nSteps: ${steps.join(' -> ') || '(none selected)'}`);
-    console.log(`Input: ${inputPath}`);
-    console.log(`Output: ${options.output || './midi/'}`);
-    console.log(`Project: ${options.project || 'Unnamed'}`);
-
-    // TODO: Implement pipeline steps
-
-    if (steps.length === 0) {
-      console.log('\nNo steps selected. Use --validate, --convert, --load');
+    if (successCount !== midiFiles.length) {
+      process.exit(1);
     }
-
-    process.exit(0);
   });
 
 // =============================================================================
@@ -395,35 +1061,32 @@ program
 
 program
   .command('info')
-  .description('Show system information and capabilities')
+  .description('Show CLI capabilities and system info')
   .action(() => {
-    console.log('='.repeat(60));
-    console.log('Jeannie Compose - System Information');
-    console.log('='.repeat(60));
+    console.log('Jeannie CLI');
+    console.log('===========');
+    console.log(`Version: ${VERSION}`);
+    console.log(`API: ${program.opts().apiUrl}`);
 
-    console.log(`\nVersion: ${VERSION}`);
     console.log('\nCapabilities:');
-    console.log('  [x] ABC notation parsing');
-    console.log('  [x] ABC validation (syntax, bar counts)');
-    console.log('  [x] ABC to MIDI conversion (midi-writer-js)');
-    console.log('  [x] Bitwig track creation (via controller API)');
-    console.log('  [x] Bitwig track naming (via controller API)');
-    console.log('  [x] Bitwig track selection/navigation');
-    console.log('  [x] Bitwig track mute/solo/volume/pan');
-    console.log('  [x] Bitwig device insertion (VST3, VST2, Bitwig)');
-    console.log('  [ ] Live MIDI note sending (TODO)');
+    console.log('  [x] Server health/status monitoring');
+    console.log('  [x] Content search (devices, presets, samples)');
+    console.log('  [x] Track management (create, select, mute, solo, volume, pan)');
+    console.log('  [x] ABC notation parsing and validation');
+    console.log('  [x] ABC to MIDI conversion');
+    console.log('  [x] Bitwig track creation from MIDI');
+    console.log('  [ ] Live MIDI note sending (planned)');
 
-    console.log('\nABC Notation:');
-    console.log('  Standard: ABC 2.1');
-    console.log('  Voices: Multi-voice support');
-    console.log('  Features: Headers, notes, rests, bars, repeats');
-
-    console.log('\nBitwig Integration:');
-    console.log('  Controller: Jeannie v0.7.0+');
-    console.log('  Content Index: ~/.config/jeannie/content.json');
-    console.log('  API: http://localhost:3000');
-
-    process.exit(0);
+    console.log('\nCommands:');
+    console.log('  jeannie health              Server health check');
+    console.log('  jeannie status              Connection status');
+    console.log('  jeannie content search <q>  Search content');
+    console.log('  jeannie track list          List tracks');
+    console.log('  jeannie track create        Create track');
+    console.log('  jeannie validate <path>     Validate ABC');
+    console.log('  jeannie convert <path>      ABC to MIDI');
+    console.log('  jeannie load <path>         Load into Bitwig');
   });
 
+// Parse and run
 program.parse();
