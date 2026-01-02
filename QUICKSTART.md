@@ -151,14 +151,14 @@ All components are at v0.1.0. To bump versions:
 
 Controller logs appear in two places:
 - **Bitwig Script Console**: Settings > Controllers > Jeannie > Script Console
-- **Log File**: `~/Library/Logs/Bitwig/logs/jeannie.log` (macOS)
+- **Log File**: `~/.config/jeannie/logs/controller.log` (macOS + Linux)
 
 To watch logs from terminal:
 ```bash
-tail -f ~/Library/Logs/Bitwig/logs/jeannie.log
+tail -f ~/.config/jeannie/logs/controller.log
 ```
 
-**Note**: Bitwig automatically creates the `logs/` subdirectory. Web server must be running for file logging.
+**How it works**: Controller uses Java FileWriter (via Nashorn) to write logs directly to `~/.config/jeannie/logs/`. No HTTP or web server required. Directory auto-created on first run.
 
 ## Next Steps
 

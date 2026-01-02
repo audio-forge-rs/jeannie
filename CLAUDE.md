@@ -408,21 +408,22 @@ npm run build
 
 **Controller Logs**:
 - **Bitwig Script Console**: Settings > Controllers > Jeannie > Script Console
-- **File Log**: `~/Library/Logs/Bitwig/logs/jeannie.log` (macOS)
-  - Note: Bitwig automatically creates the `logs/` subdirectory
-  - Controller sends logs via HTTP to web server
+- **File Log**: `~/.config/jeannie/logs/controller.log` (macOS + Linux)
+  - Controller uses Java FileWriter via Nashorn to write logs directly
+  - No HTTP or web server required
+  - Directory auto-created on first run
   - Logs appear in both console AND file
 
 **Tail Jeannie Logs**:
 ```bash
 # Watch Jeannie controller logs
-tail -f ~/Library/Logs/Bitwig/logs/jeannie.log
+tail -f ~/.config/jeannie/logs/controller.log
 
 # Watch Bitwig main logs
 tail -f ~/Library/Logs/Bitwig/BitwigStudio.log
 
 # Watch both at once (separate terminals)
-tail -f ~/Library/Logs/Bitwig/logs/jeannie.log
+tail -f ~/.config/jeannie/logs/controller.log
 tail -f ~/Library/Logs/Bitwig/BitwigStudio.log
 ```
 
@@ -430,17 +431,21 @@ tail -f ~/Library/Logs/Bitwig/BitwigStudio.log
 ```bash
 # Server outputs to console
 node web/dist/server.js
-
-# Web server also writes Bitwig controller logs to file
-# So you can see controller activity even when Bitwig console is closed
 ```
+
+**How Controller Logging Works**:
+- TypeScript compiles to JavaScript
+- JavaScript runs in Bitwig's Nashorn environment
+- Nashorn provides access to Java classes via `Java.type()`
+- Controller uses `java.io.FileWriter` and `java.io.BufferedWriter`
+- Cross-platform paths via `java.lang.System.getProperty('user.home')`
 
 **General Tips**:
 - Always check Bitwig Script Console first for controller errors
-- File logs persist across Bitwig restarts
-- Web server must be running for file logging to work
-- Controller gracefully degrades if web server is down (console-only logging)
-- Use `grep` to filter logs: `tail -f ~/Library/Logs/Bitwig/logs/jeannie.log | grep -i error`
+- File logs persist across Bitwig restarts in `~/.config/jeannie/logs/`
+- File logging works independently (no web server required)
+- Use `grep` to filter logs: `tail -f ~/.config/jeannie/logs/controller.log | grep -i error`
+- Logs use standard Java timestamp format with milliseconds
 
 **⚠️ CRITICAL DEBUGGING PRINCIPLE**:
 - **NEVER delete code or functionality to debug issues**

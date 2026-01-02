@@ -24,8 +24,13 @@ declare const host: {
 // Java interop for file I/O (Nashorn provides access to Java classes)
 declare const Java: any;
 
-const JEANNIE_VERSION = '0.4.0';
-const LOG_FILE = '/tmp/jeannie/controller.log';
+const JEANNIE_VERSION = '0.5.0';
+
+// Cross-platform paths (macOS + Linux)
+// macOS: /Users/username/.config/jeannie/logs/controller.log
+// Linux: /home/username/.config/jeannie/logs/controller.log
+const System = Java.type('java.lang.System');
+const LOG_FILE = System.getProperty('user.home') + '/.config/jeannie/logs/controller.log';
 
 loadAPI(18);
 
@@ -80,7 +85,8 @@ function init(): void {
   log('='.repeat(60));
   log('Controller initialized successfully!');
   log('Web API: http://localhost:3000');
-  log('Config: /tmp/jeannie-config.yaml');
+  log('Config: ~/.config/jeannie/config.yaml');
+  log('Logs: ~/.config/jeannie/logs/controller.log');
   log('Use Roger CLI to interact with Jeannie');
   log('='.repeat(60));
 }

@@ -53,20 +53,20 @@ python3 roger/roger.py hello
 - ✅ Roger CLI for configuration and control
 - ✅ TypeScript throughout for type safety
 - ✅ Vanilla JavaScript web UI (no build step)
-- ✅ File logging for Bitwig controller (`~/Library/Logs/Bitwig/logs/jeannie.log`)
+- ✅ File logging for Bitwig controller (`~/.config/jeannie/logs/controller.log`)
 
 ## Logging
 
 Controller logs appear in **both** locations:
 - **Bitwig Script Console**: Settings > Controllers > Jeannie > Script Console
-- **Log File**: `~/Library/Logs/Bitwig/logs/jeannie.log` (macOS)
+- **Log File**: `~/.config/jeannie/logs/controller.log` (macOS + Linux)
 
 Tail logs from command line:
 ```bash
-tail -f ~/Library/Logs/Bitwig/logs/jeannie.log
+tail -f ~/.config/jeannie/logs/controller.log
 ```
 
-Note: Web server must be running for file logging to work. Controller logs to console even if server is down.
+**How it works**: Controller uses Java FileWriter (via Nashorn) to write logs directly. No HTTP or web server required.
 
 ## Architecture
 
