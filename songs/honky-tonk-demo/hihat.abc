@@ -1,0 +1,34 @@
+X:8
+T:Honky Tonk Demo - HiHat
+C:Claude
+M:4/4
+L:1/8
+Q:1/4=120
+K:C
+%
+% Hi-Hat - 32 bars
+% Constant 8th notes for shuffle feel
+% All notes at C3 for sample triggering
+%
+% INTRO (4 bars)
+|: CCCCCCCC | CCCCCCCC | CCCCCCCC | CCCCCCCC |
+%
+% VERSE (12 bars)
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+%
+% CHORUS (8 bars)
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC :|
+%
+% OUTRO (8 bars)
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | CCCCCCCC |
+CCCCCCCC | C4 z4 |

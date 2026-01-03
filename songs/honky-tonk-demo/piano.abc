@@ -1,0 +1,44 @@
+X:1
+T:Honky Tonk Demo - Piano
+C:Claude
+M:4/4
+L:1/16
+Q:1/4=120
+K:G
+%
+% Honky Tonk Stride Piano - 32 bars
+% Classic left-hand stride with right-hand fills
+% Key: G major, Tempo: 120 BPM
+%
+% INTRO (4 bars) - Solo piano entrance
+|: G,4 B,4 D4 G4 | G,4 B,4 D4 B4 | C,4 E4 G4 c4 | D,4 ^F4 A4 d4 |
+%
+% VERSE (12 bars) - Full stride pattern
+% G chord (2 bars)
+G,2D2 B,2D2 G,2D2 B,2D2 | G,2D2 B,2D2 G,2B,2 D2G2 |
+% G chord (2 bars) with walk-up
+G,2D2 B,2D2 G,2D2 B,2D2 | G,2D2 G2B2 d2B2 G2D2 |
+% C chord (2 bars)
+C,2E2 G,2E2 C,2E2 G,2E2 | C,2E2 G,2E2 c2e2 g2e2 |
+% G chord (2 bars)
+G,2D2 B,2D2 G,2D2 B,2D2 | G,2D2 B,2D2 G,2B,2 D2G2 |
+% D chord (2 bars)
+D,2^F2 A,2^F2 D,2^F2 A,2^F2 | D,2^F2 A,2^F2 d2^f2 a2^f2 |
+% G chord (2 bars) - turnaround
+G,2D2 B,2D2 G,2D2 B,2D2 | G,2D2 D2G2 B2d2 D2B,2 |
+%
+% CHORUS (8 bars) - More energy
+% D chord (2 bars)
+D,2A,2 ^F2A2 D,2A,2 ^F2A2 | D,2A,2 ^F2A2 d2a2 ^f2d2 |
+% C chord (2 bars)
+C,2G,2 E2G2 C,2G,2 E2G2 | C,2G,2 E2G2 c2g2 e2c2 |
+% G chord (2 bars)
+G,2D2 B,2D2 G,2D2 B,2D2 | G,2D2 B,2D2 G,2B,2 D2G2 |
+% D to G (2 bars) - big finish
+D,2^F2 A,2^F2 D2^F2 A2d2 | G,4 D4 G4 B4 :|
+%
+% OUTRO (8 bars) - Wind down
+G,2D2 B,2D2 G,2D2 B,2D2 | G,2D2 B,2D2 d2B2 G2D2 |
+C,2E2 G,2E2 C,2E2 G,2E2 | D,2^F2 A,2^F2 D2^F2 A2d2 |
+G,2D2 B,2D2 G,2D2 B,2D2 | G,2D2 B,2D2 G,2B,2 D2G2 |
+G,4 B,4 D4 G4 | G,8 z8 |

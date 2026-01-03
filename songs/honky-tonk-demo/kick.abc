@@ -1,0 +1,34 @@
+X:6
+T:Honky Tonk Demo - Kick
+C:Claude
+M:4/4
+L:1/8
+Q:1/4=120
+K:C
+%
+% Kick Drum - 32 bars
+% Beats 1 and 3 (country two-step feel)
+% All notes at C3 for sample triggering
+%
+% INTRO (4 bars)
+|: C2 z2 C2 z2 | C2 z2 C2 z2 | C2 z2 C2 z2 | C2 z2 C2 z2 |
+%
+% VERSE (12 bars)
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+%
+% CHORUS (8 bars)
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C4 z4 :|
+%
+% OUTRO (8 bars)
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C2 z2 C2 z2 |
+C2 z2 C2 z2 | C4 z4 |

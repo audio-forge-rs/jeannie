@@ -1,0 +1,43 @@
+X:3
+T:Honky Tonk Demo - Guitar
+C:Claude
+M:4/4
+L:1/8
+Q:1/4=120
+K:G
+%
+% Acoustic Guitar - 32 bars
+% Boom-chick strumming pattern
+% Bass note on 1 & 3, chord strum on 2 & 4
+%
+% INTRO (4 bars)
+|: G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 | C,2 [EGc]2 G,2 [EGc]2 | D,2 [^FAd]2 A,2 [^FAd]2 |
+%
+% VERSE (12 bars)
+% G chord (4 bars)
+G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 |
+G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 |
+% C chord (2 bars)
+C,2 [EGc]2 G,2 [EGc]2 | C,2 [EGc]2 G,2 [EGc]2 |
+% G chord (2 bars)
+G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 |
+% D chord (2 bars)
+D,2 [^FAd]2 A,2 [^FAd]2 | D,2 [^FAd]2 A,2 [^FAd]2 |
+% G chord (2 bars)
+G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 |
+%
+% CHORUS (8 bars)
+% D chord (2 bars)
+D,2 [^FAd]2 A,2 [^FAd]2 | D,2 [^FAd]2 A,2 [^FAd]2 |
+% C chord (2 bars)
+C,2 [EGc]2 G,2 [EGc]2 | C,2 [EGc]2 G,2 [EGc]2 |
+% G chord (2 bars)
+G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 |
+% D to G (2 bars)
+D,2 [^FAd]2 A,2 [^FAd]2 | G,4 [B,DG]4 :|
+%
+% OUTRO (8 bars)
+G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 |
+C,2 [EGc]2 G,2 [EGc]2 | D,2 [^FAd]2 A,2 [^FAd]2 |
+G,2 [B,DG]2 D2 [B,DG]2 | G,2 [B,DG]2 D2 [B,DG]2 |
+G,2 [B,DG]2 D2 [B,DG]2 | G,8 |

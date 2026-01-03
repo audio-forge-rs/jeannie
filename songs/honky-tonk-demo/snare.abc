@@ -1,0 +1,34 @@
+X:7
+T:Honky Tonk Demo - Snare
+C:Claude
+M:4/4
+L:1/8
+Q:1/4=120
+K:C
+%
+% Snare Drum - 32 bars
+% Beats 2 and 4 with fills at section endings
+% All notes at C3 for sample triggering
+%
+% INTRO (4 bars)
+|: z2 C2 z2 C2 | z2 C2 z2 C2 | z2 C2 z2 C2 | z2 C2 CCCC |
+%
+% VERSE (12 bars)
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 CCCC |
+%
+% CHORUS (8 bars)
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | CCCCCCCC :|
+%
+% OUTRO (8 bars)
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | z2 C2 z2 C2 |
+z2 C2 z2 C2 | C4 z4 |

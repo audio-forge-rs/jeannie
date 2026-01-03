@@ -123,5 +123,7 @@ coverage/
 docs/instruments/
 
 # Song projects and compositions (versioned locally, not in git)
-songs/
+# Exception: honky-tonk-demo is included as an example
+songs/*
+!songs/honky-tonk-demo/
 

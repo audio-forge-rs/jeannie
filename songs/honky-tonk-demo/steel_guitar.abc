@@ -1,0 +1,43 @@
+X:4
+T:Honky Tonk Demo - Steel Guitar
+C:Claude
+M:4/4
+L:1/8
+Q:1/4=120
+K:G
+%
+% Pedal Steel Guitar - 32 bars
+% Melodic fills, bends, and crying licks
+% Plays during gaps in vocal melody
+%
+% INTRO (4 bars) - Opening lick
+|: z4 D2 G2 | B4 A2 G2 | z4 E2 G2 | A4 ^F2 D2 |
+%
+% VERSE (12 bars) - Fills between phrases
+% G chord fills
+z4 B2 d2 | e4 d2 B2 |
+z4 G2 B2 | d4 B2 G2 |
+% C chord fills
+z4 c2 e2 | g4 e2 c2 |
+% G chord fills
+z4 B2 d2 | g4 d2 B2 |
+% D chord - signature lick
+z4 ^f2 a2 | d'4 a2 ^f2 |
+% G turnaround lick
+z4 d2 B2 | G4 A2 B2 |
+%
+% CHORUS (8 bars) - More prominent
+% D chord
+d4 ^f2 a2 | d'4 a2 ^f2 |
+% C chord
+c4 e2 g2 | c'4 g2 e2 |
+% G chord - high melody
+B4 d2 g2 | b4 g2 d2 |
+% D to G - signature ending
+a4 ^f2 d2 | G4 z4 :|
+%
+% OUTRO (8 bars) - Weeping steel outro
+z4 d2 B2 | G4 A2 B2 |
+z4 c2 e2 | A4 ^F2 D2 |
+z4 B2 d2 | g4 d2 B2 |
+G2 A2 B2 d2 | G8 |

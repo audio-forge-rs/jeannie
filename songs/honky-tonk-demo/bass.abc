@@ -1,0 +1,43 @@
+X:2
+T:Honky Tonk Demo - Bass
+C:Claude
+M:4/4
+L:1/8
+Q:1/4=120
+K:G
+%
+% Walking Bass - 32 bars
+% Root-fifth pattern with chromatic walk-ups
+% Matches piano chord progression
+%
+% INTRO (4 bars)
+|: G,2 D2 G,2 D2 | G,2 D2 G,2 B,2 | C,2 G,2 C,2 G,2 | D,2 A,2 D,2 ^F,2 |
+%
+% VERSE (12 bars)
+% G chord (2 bars)
+G,2 D2 G,2 D2 | G,2 D2 G,2 B,2 |
+G,2 D2 G,2 D2 | G,2 B,2 D2 G,2 |
+% C chord (2 bars)
+C,2 G,2 C,2 G,2 | C,2 G,2 C,2 E,2 |
+% G chord (2 bars)
+G,2 D2 G,2 D2 | G,2 D2 G,2 B,2 |
+% D chord (2 bars)
+D,2 A,2 D,2 A,2 | D,2 A,2 D,2 ^F,2 |
+% G chord (2 bars) turnaround
+G,2 D2 G,2 D2 | G,2 ^F,2 E,2 D,2 |
+%
+% CHORUS (8 bars)
+% D chord (2 bars)
+D,2 A,2 D,2 A,2 | D,2 A,2 D,2 ^F,2 |
+% C chord (2 bars)
+C,2 G,2 C,2 G,2 | C,2 G,2 C,2 E,2 |
+% G chord (2 bars)
+G,2 D2 G,2 D2 | G,2 D2 G,2 B,2 |
+% D to G (2 bars)
+D,2 A,2 D,2 A,2 | G,4 z4 :|
+%
+% OUTRO (8 bars)
+G,2 D2 G,2 D2 | G,2 D2 G,2 B,2 |
+C,2 G,2 C,2 G,2 | D,2 A,2 D,2 ^F,2 |
+G,2 D2 G,2 D2 | G,2 D2 G,2 B,2 |
+G,2 D2 G,2 D2 | G,8 |

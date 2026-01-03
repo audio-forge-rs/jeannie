@@ -1,0 +1,53 @@
+name: Honky Tonk Demo
+tempo: 130
+timeSignature: [4, 4]
+key: G
+bars: 16
+style: honky-tonk
+
+tracks:
+  - name: Piano
+    instrument: Saloon Bar Piano
+    plugin: M-Tron Pro IV
+    role: lead/rhythm
+    preset_path: /Library/Application Support/GForce/M-Tron Pro IV/Patches/Saloon Bar Piano.xml
+
+  - name: Acoustic Guitar
+    instrument: Western (Pick)
+    plugin: Kontakt 8
+    library: Acou6tics
+    role: rhythm
+    preset_path: /Volumes/External/kontakt_libraries/Acou6tics/Instruments/Western (Pick).nki
+
+  - name: Steel Guitar
+    instrument: RealGuitar Steel String
+    plugin: VST3
+    role: lead fills
+    notes: Use steel string patch, add some slide/bend
+
+  - name: Bass
+    instrument: Surge XT
+    plugin: VST3
+    role: bass
+    notes: Use upright bass or fingered bass patch
+
+  - name: Organ
+    instrument: FM-4
+    plugin: Bitwig Native
+    role: pad/fill
+    notes: Gospel organ sound, subtle
+
+  - name: Drums
+    instrument: Drum Machine
+    plugin: Bitwig Native
+    role: rhythm
+    notes: Brushed kit or light country beat
+
+effects:
+  - name: ValhallaRoom
+    on: Master Bus
+    notes: Light room reverb for cohesion
+
+  - name: Compression
+    on: Piano
+    notes: Light compression to even out the attack
