@@ -638,7 +638,23 @@ function setNotes(notes: NoteData[]): boolean {
   }
 }
 
-// Insert device into current track
+// Insert device into current track by file path (preferred method)
+function insertDeviceByPath(filePath: string): boolean {
+  try {
+    log('Inserting device by path: ' + filePath);
+
+    const insertionPoint = cursorTrack.endOfDeviceChainInsertionPoint();
+    insertionPoint.insertFile(filePath);
+
+    log('Device inserted by path successfully');
+    return true;
+  } catch (e) {
+    log('Error inserting device by path: ' + e, 'error');
+    return false;
+  }
+}
+
+// Insert device into current track by ID (fallback method)
 function insertDevice(deviceId: string, deviceType: 'vst3' | 'vst2' | 'bitwig' | 'clap'): boolean {
   try {
     log('Inserting device: ' + deviceId + ' (type: ' + deviceType + ')');
@@ -964,6 +980,14 @@ function processCommands(): void {
               response.success = insertDevice(cmd.params.deviceId, cmd.params.deviceType);
             } else {
               response.error = 'Missing deviceId or deviceType parameter';
+            }
+            break;
+
+          case 'insertDeviceByPath':
+            if (cmd.params.path) {
+              response.success = insertDeviceByPath(cmd.params.path);
+            } else {
+              response.error = 'Missing path parameter';
             }
             break;
 

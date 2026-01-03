@@ -639,7 +639,7 @@ interface NoteData {
 
 interface TrackCommand {
   id: string;
-  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo' |
+  action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'insertDeviceByPath' | 'getTrackInfo' |
           'selectTrack' | 'navigateTrack' | 'setTrackMute' | 'setTrackSolo' |
           'getTrackList' | 'deleteTrack' | 'setTrackColor' | 'setTrackVolume' | 'setTrackPan' |
           'findTracksByName' | 'selectTrackByName' | 'insertPresetFile' |
@@ -651,6 +651,7 @@ interface TrackCommand {
     trackIndex?: number;
     deviceId?: string;
     deviceType?: 'vst3' | 'vst2' | 'bitwig' | 'clap';
+    path?: string;  // For insertDeviceByPath
     direction?: 'next' | 'previous' | 'first' | 'last';
     mute?: boolean;
     solo?: boolean;
@@ -1018,12 +1019,29 @@ app.post('/api/bitwig/tracks/setup', async (req: Request, res: Response) => {
 
     if (hostPlugin) {
       // Insert the host plugin (Kontakt, M-Tron, etc.)
+      // First, find the plugin in content DB to get its path
       deviceType = hostDeviceType;
-      const insertCommand: TrackCommand = {
-        id: generateCommandId(),
-        action: 'insertDevice',
-        params: { deviceId: hostPlugin, deviceType: hostDeviceType }
-      };
+      const pluginSearchResults = contentSearchIndex.search(hostPlugin, { contentType: 'Device' }, false);
+      const pluginMatch = pluginSearchResults.find(r =>
+        r.item.name.toLowerCase().includes(hostPlugin.toLowerCase().split(' ')[0]) // Match "Kontakt" from "Kontakt 8"
+      );
+
+      let insertCommand: TrackCommand;
+      if (pluginMatch?.item.path) {
+        // Use path-based insertion (preferred)
+        insertCommand = {
+          id: generateCommandId(),
+          action: 'insertDeviceByPath',
+          params: { path: pluginMatch.item.path }
+        };
+      } else {
+        // Fallback to name-based insertion
+        insertCommand = {
+          id: generateCommandId(),
+          action: 'insertDevice',
+          params: { deviceId: hostPlugin, deviceType: hostDeviceType }
+        };
+      }
       insertResult = await sendBitwigCommand(insertCommand);
 
       // Note: We can only insert the host plugin. The preset must be loaded manually within the plugin.
@@ -1067,11 +1085,21 @@ app.post('/api/bitwig/tracks/setup', async (req: Request, res: Response) => {
     deviceType = 'vst3';
   }
 
-  const insertCommand: TrackCommand = {
-    id: generateCommandId(),
-    action: 'insertDevice',
-    params: { deviceId: content.name, deviceType: deviceType as any }
-  };
+  // Prefer path-based insertion if path is available
+  let insertCommand: TrackCommand;
+  if (content.path) {
+    insertCommand = {
+      id: generateCommandId(),
+      action: 'insertDeviceByPath',
+      params: { path: content.path }
+    };
+  } else {
+    insertCommand = {
+      id: generateCommandId(),
+      action: 'insertDevice',
+      params: { deviceId: content.name, deviceType: deviceType as any }
+    };
+  }
   insertResult = await sendBitwigCommand(insertCommand);
 
   const response: ApiResponse = {
@@ -1084,7 +1112,8 @@ app.post('/api/bitwig/tracks/setup', async (req: Request, res: Response) => {
       deviceType: deviceType,
       plugin: content.plugin,
       track: targetTrackName,
-      trackCreated: matchCount === 0
+      trackCreated: matchCount === 0,
+      path: content.path
     } : undefined,
     error: insertResult.error,
     timestamp: new Date().toISOString()
