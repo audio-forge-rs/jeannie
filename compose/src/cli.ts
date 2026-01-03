@@ -25,6 +25,7 @@ import { parseAbcFile } from './abc/parser';
 import { convertAbcFileToMidi, convertAbcDirectory } from './midi/converter';
 import * as fs from 'fs';
 import * as path from 'path';
+import { parseMidi } from 'midi-file';
 
 // Load versions from single source of truth
 const VERSIONS_FILE = path.join(__dirname, '..', '..', 'versions.json');
@@ -182,9 +183,107 @@ class JeannieClient {
     return this.request('/api/bitwig/tracks/pan', 'POST', { pan });
   }
 
-  async trackDevice(deviceId: string, deviceType: string): Promise<ApiResponse> {
-    return this.request('/api/bitwig/tracks/device', 'POST', { deviceId, deviceType });
+  async trackSetup(name: string, trackName?: string): Promise<ApiResponse> {
+    return this.request('/api/bitwig/tracks/setup', 'POST', { name, trackName });
   }
+
+  // Clip operations
+  async clipCreate(slotIndex: number, lengthInBeats: number): Promise<ApiResponse> {
+    return this.request('/api/bitwig/clips', 'POST', { slotIndex, lengthInBeats });
+  }
+
+  async clipSetNotes(notes: NoteData[]): Promise<ApiResponse> {
+    return this.request('/api/bitwig/clips/notes', 'POST', { notes });
+  }
+
+  async clipClear(): Promise<ApiResponse> {
+    return this.request('/api/bitwig/clips/notes', 'DELETE');
+  }
+}
+
+// Note data for clip operations
+interface NoteData {
+  pitch: number;
+  start: number;      // in beats
+  duration: number;   // in beats
+  velocity: number;
+  channel?: number;
+}
+
+// MIDI file parsing helper
+interface ParsedMidiData {
+  notes: NoteData[];
+  lengthInBeats: number;
+  ticksPerBeat: number;
+  noteCount: number;
+}
+
+function parseMidiFile(filePath: string): ParsedMidiData {
+  const buffer = fs.readFileSync(filePath);
+  const midi = parseMidi(buffer);
+
+  const ticksPerBeat = midi.header.ticksPerBeat || 480;
+  const notes: NoteData[] = [];
+  let maxTick = 0;
+
+  // Track active notes (for note-off matching)
+  const activeNotes: Map<string, { pitch: number; velocity: number; startTick: number; channel: number }> = new Map();
+
+  for (const track of midi.tracks) {
+    let currentTick = 0;
+
+    for (const event of track) {
+      currentTick += event.deltaTime;
+
+      if (event.type === 'noteOn' && event.velocity > 0) {
+        // Note on
+        const key = `${event.channel}-${event.noteNumber}`;
+        activeNotes.set(key, {
+          pitch: event.noteNumber,
+          velocity: event.velocity,
+          startTick: currentTick,
+          channel: event.channel
+        });
+      } else if (event.type === 'noteOff' || (event.type === 'noteOn' && event.velocity === 0)) {
+        // Note off
+        const key = `${event.channel}-${event.noteNumber}`;
+        const activeNote = activeNotes.get(key);
+
+        if (activeNote) {
+          const startBeats = activeNote.startTick / ticksPerBeat;
+          const durationTicks = currentTick - activeNote.startTick;
+          const durationBeats = durationTicks / ticksPerBeat;
+
+          notes.push({
+            pitch: activeNote.pitch,
+            start: startBeats,
+            duration: durationBeats,
+            velocity: activeNote.velocity,
+            channel: activeNote.channel
+          });
+
+          activeNotes.delete(key);
+        }
+      }
+
+      if (currentTick > maxTick) {
+        maxTick = currentTick;
+      }
+    }
+  }
+
+  // Sort notes by start time
+  notes.sort((a, b) => a.start - b.start);
+
+  // Calculate length in beats (round up to nearest bar, assuming 4/4)
+  const lengthInBeats = Math.ceil(maxTick / ticksPerBeat / 4) * 4;
+
+  return {
+    notes,
+    lengthInBeats: Math.max(lengthInBeats, 4), // Minimum 1 bar
+    ticksPerBeat,
+    noteCount: notes.length
+  };
 }
 
 // =============================================================================
@@ -785,19 +884,28 @@ trackCmd
   });
 
 trackCmd
-  .command('device <deviceId>')
-  .description('Insert device into current track')
-  .option('--type <type>', 'Device type: vst3, vst2, bitwig', 'vst3')
-  .action(async (deviceId: string, options) => {
+  .command('device <name> [trackName]')
+  .description('Setup track with instrument/preset (searches content, creates track if needed)')
+  .action(async (name: string, trackName: string | undefined) => {
     const client = getClient();
-    const response = await client.trackDevice(deviceId, options.type);
+    const response = await client.trackSetup(name, trackName);
 
     if (shouldOutputJson()) {
       printJson(response);
     } else if (response.success) {
-      printSuccess(`Device inserted: ${deviceId} (${options.type})`);
+      const data = response.data;
+      const created = data?.trackCreated ? ' (created)' : '';
+      const type = data?.insertionType === 'preset' ? data?.plugin : data?.deviceType;
+      printSuccess(`${data?.content} (${type}) → ${data?.track}${created}`);
+      // Show note about manual preset loading if applicable
+      if (data?.note) {
+        console.log(`  Note: ${data.note}`);
+      }
+      if (data?.presetPath) {
+        console.log(`  Preset: ${data.presetPath}`);
+      }
     } else {
-      printError(response.error || 'Device insertion failed');
+      printError(response.error || 'Track setup failed');
       process.exit(1);
     }
   });
@@ -1027,30 +1135,89 @@ program
       return;
     }
 
-    // Create tracks
-    console.log('\nCreating tracks in Bitwig...');
-    let successCount = 0;
+    // Parse MIDI files first
+    console.log('\nParsing MIDI files...');
+    const parsedFiles: { file: string; trackName: string; data: ParsedMidiData }[] = [];
 
     for (const midiFile of midiFiles) {
       const trackName = path.basename(midiFile, path.extname(midiFile));
-      console.log(`  Creating: "${trackName}"...`);
-
-      const result = await client.trackCreate('instrument', trackName);
-
-      if (result.success) {
-        console.log(`    ✓ Created`);
-        successCount++;
-      } else {
-        console.error(`    ✗ ${result.error}`);
+      try {
+        const data = parseMidiFile(midiFile);
+        console.log(`  ✓ ${trackName}: ${data.noteCount} notes, ${data.lengthInBeats} beats`);
+        parsedFiles.push({ file: midiFile, trackName, data });
+      } catch (e) {
+        console.error(`  ✗ ${trackName}: Failed to parse - ${e}`);
       }
     }
 
-    console.log(`\n${successCount}/${midiFiles.length} tracks created`);
-    console.log('\nNext steps:');
-    console.log('  1. Select instruments for each track');
-    console.log('  2. Import MIDI clips (drag & drop or File > Import)');
+    if (parsedFiles.length === 0) {
+      printError('No MIDI files could be parsed');
+      process.exit(1);
+    }
 
-    if (successCount !== midiFiles.length) {
+    // Create tracks and load clips
+    console.log('\nCreating tracks and loading clips in Bitwig...');
+    let successCount = 0;
+    let totalNotes = 0;
+
+    for (let i = 0; i < parsedFiles.length; i++) {
+      const { trackName, data } = parsedFiles[i];
+      console.log(`\n[${i + 1}/${parsedFiles.length}] ${trackName}:`);
+
+      // Create the track
+      console.log(`  Creating track...`);
+      const createResult = await client.trackCreate('instrument', trackName);
+
+      if (!createResult.success) {
+        console.error(`  ✗ Failed to create track: ${createResult.error}`);
+        continue;
+      }
+      console.log(`  ✓ Track created`);
+
+      // Small delay to ensure track is ready and selected
+      // (newly created track should already be selected)
+      await new Promise(resolve => setTimeout(resolve, 200));
+
+      // Create a clip in slot 0
+      console.log(`  Creating clip (${data.lengthInBeats} beats)...`);
+      const clipResult = await client.clipCreate(0, data.lengthInBeats);
+
+      if (!clipResult.success) {
+        console.error(`  ✗ Failed to create clip: ${clipResult.error}`);
+        continue;
+      }
+      console.log(`  ✓ Clip created`);
+
+      // Small delay before setting notes
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      // Set the notes
+      console.log(`  Loading ${data.noteCount} notes...`);
+      const notesResult = await client.clipSetNotes(data.notes);
+
+      if (!notesResult.success) {
+        console.error(`  ✗ Failed to set notes: ${notesResult.error}`);
+        continue;
+      }
+      console.log(`  ✓ Notes loaded`);
+
+      successCount++;
+      totalNotes += data.noteCount;
+    }
+
+    console.log(`\n${'═'.repeat(50)}`);
+    console.log(`✓ ${successCount}/${parsedFiles.length} tracks loaded`);
+    console.log(`✓ ${totalNotes} total notes imported`);
+    console.log(`${'═'.repeat(50)}`);
+
+    if (successCount > 0) {
+      console.log('\nNext steps:');
+      console.log('  1. Select instruments for each track');
+      console.log('  2. Add effects and mixing');
+      console.log('  3. Press play!');
+    }
+
+    if (successCount !== parsedFiles.length) {
       process.exit(1);
     }
   });

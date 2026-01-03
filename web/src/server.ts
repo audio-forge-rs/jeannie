@@ -628,24 +628,39 @@ app.post('/api/content/rescan', (_req: Request, res: Response) => {
 // Track Management API
 // =============================================================================
 
+// Note data for MIDI clip operations
+interface NoteData {
+  pitch: number;      // MIDI note number (0-127)
+  start: number;      // Start time in beats
+  duration: number;   // Duration in beats
+  velocity: number;   // Velocity (0-127)
+  channel?: number;   // MIDI channel (0-15), default 0
+}
+
 interface TrackCommand {
   id: string;
   action: 'createTrack' | 'renameTrack' | 'insertDevice' | 'getTrackInfo' |
           'selectTrack' | 'navigateTrack' | 'setTrackMute' | 'setTrackSolo' |
-          'getTrackList' | 'deleteTrack' | 'setTrackColor' | 'setTrackVolume' | 'setTrackPan';
+          'getTrackList' | 'deleteTrack' | 'setTrackColor' | 'setTrackVolume' | 'setTrackPan' |
+          'findTracksByName' | 'selectTrackByName' | 'insertPresetFile' |
+          'createClip' | 'setNotes' | 'clearClip';
   params: {
     type?: 'instrument' | 'audio' | 'effect';
     name?: string;
     position?: number;
     trackIndex?: number;
     deviceId?: string;
-    deviceType?: 'vst3' | 'vst2' | 'bitwig';
+    deviceType?: 'vst3' | 'vst2' | 'bitwig' | 'clap';
     direction?: 'next' | 'previous' | 'first' | 'last';
     mute?: boolean;
     solo?: boolean;
     color?: string;
     volume?: number;
     pan?: number;
+    filePath?: string;
+    slotIndex?: number;
+    lengthInBeats?: number;
+    notes?: NoteData[];
   };
 }
 
@@ -810,6 +825,349 @@ app.post('/api/bitwig/tracks/device', async (req: Request, res: Response) => {
   const response: ApiResponse = {
     success: result.success,
     data: result.success ? { message: `Inserted device: ${deviceId}` } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Setup track with instrument/preset - one-shot orchestrating endpoint
+// Searches for preset or device by name, creates track if needed, loads appropriately
+app.post('/api/bitwig/tracks/setup', async (req: Request, res: Response) => {
+  const { name, trackName } = req.body;
+
+  if (!name) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'name is required (instrument/preset name)',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  // Step 1: Search content index for preset or device
+  if (!contentSearchIndex.isLoaded()) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Content index not loaded - run filesystem scan: cd web && npm run scan',
+      timestamp: new Date().toISOString()
+    };
+    res.status(503).json(response);
+    return;
+  }
+
+  // Search for exact match in both Presets and Devices
+  const presetResults = contentSearchIndex.search(name, { contentType: 'Preset' }, false);
+  const deviceResults = contentSearchIndex.search(name, { contentType: 'Device' }, false);
+
+  const presetMatch = presetResults.find(r => r.item.name.toLowerCase() === name.toLowerCase());
+  const deviceMatch = deviceResults.find(r => r.item.name.toLowerCase() === name.toLowerCase());
+
+  // Prefer preset over device (more specific)
+  const match = presetMatch || deviceMatch;
+
+  if (!match) {
+    // Try fuzzy search for helpful error
+    const fuzzyResults = contentSearchIndex.search(name, {}, true);
+    const suggestions = fuzzyResults.slice(0, 3).map(r => r.item.name);
+    const response: ApiResponse = {
+      success: false,
+      error: `Not found: "${name}"${suggestions.length > 0 ? `. Did you mean: ${suggestions.join(', ')}?` : ''}`,
+      timestamp: new Date().toISOString()
+    };
+    res.status(404).json(response);
+    return;
+  }
+
+  const content = match.item;
+  const isPreset = content.contentType === 'Preset';
+  const hasFilePath = !!content.path;
+
+  // Use track name or default to content name
+  const targetTrackName = trackName || content.name;
+
+  // Step 2: Find track by name
+  const findCommand: TrackCommand = {
+    id: generateCommandId(),
+    action: 'findTracksByName',
+    params: { name: targetTrackName }
+  };
+
+  const findResult = await sendBitwigCommand(findCommand);
+
+  if (!findResult.success) {
+    const response: ApiResponse = {
+      success: false,
+      error: findResult.error || 'Failed to search for track',
+      timestamp: new Date().toISOString()
+    };
+    res.status(500).json(response);
+    return;
+  }
+
+  const matchCount = findResult.data?.count || 0;
+
+  // Step 4: Handle track creation or selection
+  if (matchCount > 1) {
+    const response: ApiResponse = {
+      success: false,
+      error: `Multiple tracks (${matchCount}) found with name "${targetTrackName}" - cannot determine which to use`,
+      timestamp: new Date().toISOString()
+    };
+    res.status(409).json(response);
+    return;
+  }
+
+  if (matchCount === 0) {
+    // Create track
+    const createCommand: TrackCommand = {
+      id: generateCommandId(),
+      action: 'createTrack',
+      params: { type: 'instrument', position: -1 }
+    };
+
+    const createResult = await sendBitwigCommand(createCommand);
+
+    if (!createResult.success) {
+      const response: ApiResponse = {
+        success: false,
+        error: createResult.error || 'Failed to create track',
+        timestamp: new Date().toISOString()
+      };
+      res.status(500).json(response);
+      return;
+    }
+
+    // Rename to target name
+    const renameCommand: TrackCommand = {
+      id: generateCommandId(),
+      action: 'renameTrack',
+      params: { name: targetTrackName }
+    };
+
+    await sendBitwigCommand(renameCommand);
+  } else {
+    // Select existing track
+    const selectCommand: TrackCommand = {
+      id: generateCommandId(),
+      action: 'selectTrackByName',
+      params: { name: targetTrackName }
+    };
+
+    const selectResult = await sendBitwigCommand(selectCommand);
+
+    if (!selectResult.success) {
+      const response: ApiResponse = {
+        success: false,
+        error: selectResult.error || 'Failed to select track',
+        timestamp: new Date().toISOString()
+      };
+      res.status(500).json(response);
+      return;
+    }
+  }
+
+  // Step 5: Insert preset file or device
+  let insertResult: { success: boolean; error?: string; data?: any };
+  let insertionType: 'preset' | 'device';
+  let deviceType: string | undefined;
+
+  if (isPreset && hasFilePath) {
+    // For presets with file paths, we need to insert the host plugin first
+    // Bitwig's insertFile() doesn't work with .nki (Kontakt) or .xml (M-Tron) files
+    insertionType = 'preset';
+
+    // Determine the host plugin to insert based on file extension and metadata
+    const filePath = content.path!;
+    const ext = filePath.toLowerCase().split('.').pop();
+    let hostPlugin: string | undefined;
+    let hostDeviceType: 'vst3' | 'vst2' | 'clap' = 'vst3';
+
+    if (ext === 'nki' || content.plugin?.includes('Kontakt')) {
+      // Kontakt preset - use version from metadata or default to Kontakt 8
+      hostPlugin = content.plugin || 'Kontakt 8';
+    } else if (ext === 'xml' && content.plugin?.includes('M-Tron')) {
+      // M-Tron patch
+      hostPlugin = content.plugin || 'M-Tron Pro IV';
+    } else if (ext === 'bwpreset') {
+      // Bitwig preset - try insertFile directly
+      const insertCommand: TrackCommand = {
+        id: generateCommandId(),
+        action: 'insertPresetFile',
+        params: { filePath }
+      };
+      insertResult = await sendBitwigCommand(insertCommand);
+
+      const response: ApiResponse = {
+        success: insertResult.success,
+        data: insertResult.success ? {
+          message: `Preset "${content.name}" loaded on track "${targetTrackName}"`,
+          content: content.name,
+          contentType: content.contentType,
+          insertionType: 'preset',
+          track: targetTrackName,
+          trackCreated: matchCount === 0
+        } : undefined,
+        error: insertResult.error,
+        timestamp: new Date().toISOString()
+      };
+      res.status(insertResult.success ? 200 : 500).json(response);
+      return;
+    }
+
+    if (hostPlugin) {
+      // Insert the host plugin (Kontakt, M-Tron, etc.)
+      deviceType = hostDeviceType;
+      const insertCommand: TrackCommand = {
+        id: generateCommandId(),
+        action: 'insertDevice',
+        params: { deviceId: hostPlugin, deviceType: hostDeviceType }
+      };
+      insertResult = await sendBitwigCommand(insertCommand);
+
+      // Note: We can only insert the host plugin. The preset must be loaded manually within the plugin.
+      // Future enhancement: Use Bitwig's browser API to load the preset
+      const response: ApiResponse = {
+        success: insertResult.success,
+        data: insertResult.success ? {
+          message: `${hostPlugin} added to track "${targetTrackName}" - load preset "${content.name}" manually`,
+          content: content.name,
+          contentType: content.contentType,
+          insertionType: 'preset',
+          deviceType: hostDeviceType,
+          plugin: hostPlugin,
+          presetPath: filePath,
+          track: targetTrackName,
+          trackCreated: matchCount === 0,
+          note: 'Preset must be loaded manually within the plugin'
+        } : undefined,
+        error: insertResult.error,
+        timestamp: new Date().toISOString()
+      };
+      res.status(insertResult.success ? 200 : 500).json(response);
+      return;
+    }
+  }
+
+  // For devices (VST3, CLAP, etc.) - no file path or unknown format
+  insertionType = 'device';
+
+  // Determine device type from content metadata
+  if (content.category?.toLowerCase().includes('clap')) {
+    deviceType = 'clap';
+  } else if (content.category?.toLowerCase().includes('vst3')) {
+    deviceType = 'vst3';
+  } else if (content.category?.toLowerCase().includes('vst2') || content.category?.toLowerCase().includes('vst')) {
+    deviceType = 'vst2';
+  } else if (content.creator === 'Bitwig') {
+    deviceType = 'bitwig';
+  } else {
+    // Default preference order: clap > vst3 > vst2
+    deviceType = 'vst3';
+  }
+
+  const insertCommand: TrackCommand = {
+    id: generateCommandId(),
+    action: 'insertDevice',
+    params: { deviceId: content.name, deviceType: deviceType as any }
+  };
+  insertResult = await sendBitwigCommand(insertCommand);
+
+  const response: ApiResponse = {
+    success: insertResult.success,
+    data: insertResult.success ? {
+      message: `Device "${content.name}" (${deviceType}) added to track "${targetTrackName}"`,
+      content: content.name,
+      contentType: content.contentType,
+      insertionType,
+      deviceType: deviceType,
+      plugin: content.plugin,
+      track: targetTrackName,
+      trackCreated: matchCount === 0
+    } : undefined,
+    error: insertResult.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(insertResult.success ? 200 : 500).json(response);
+});
+
+// =============================================================================
+// Clip/MIDI API
+// =============================================================================
+
+// Create a clip on the current track
+app.post('/api/bitwig/clips', async (req: Request, res: Response) => {
+  const { slotIndex = 0, lengthInBeats = 16 } = req.body;
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'createClip',
+    params: { slotIndex, lengthInBeats }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? {
+      message: `Created clip at slot ${slotIndex} (${lengthInBeats} beats)`,
+      slotIndex,
+      lengthInBeats
+    } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Set notes in the current clip
+app.post('/api/bitwig/clips/notes', async (req: Request, res: Response) => {
+  const { notes } = req.body;
+
+  if (!notes || !Array.isArray(notes)) {
+    const response: ApiResponse = {
+      success: false,
+      error: 'notes array is required',
+      timestamp: new Date().toISOString()
+    };
+    res.status(400).json(response);
+    return;
+  }
+
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'setNotes',
+    params: { notes }
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? {
+      message: `Set ${notes.length} notes in clip`,
+      notesSet: notes.length
+    } : undefined,
+    error: result.error,
+    timestamp: new Date().toISOString()
+  };
+  res.status(result.success ? 200 : 500).json(response);
+});
+
+// Clear current clip
+app.delete('/api/bitwig/clips/notes', async (_req: Request, res: Response) => {
+  const command: TrackCommand = {
+    id: generateCommandId(),
+    action: 'clearClip',
+    params: {}
+  };
+
+  const result = await sendBitwigCommand(command);
+
+  const response: ApiResponse = {
+    success: result.success,
+    data: result.success ? { message: 'Clip cleared' } : undefined,
     error: result.error,
     timestamp: new Date().toISOString()
   };

@@ -13,6 +13,7 @@ declare const loadAPI: (version: number) => void;
 interface Value<T> {
   addValueObserver(callback: (value: T) => void): void;
   get(): T;
+  markInterested(): void;
 }
 
 interface SettableValue<T> extends Value<T> {
@@ -32,6 +33,8 @@ interface InsertionPoint {
   insertBitwigDevice(id: string): void;
   insertVST2Device(id: number): void;
   insertVST3Device(id: string): void;
+  insertCLAPDevice(id: string): void;
+  insertFile(path: string): void;
 }
 
 interface DeviceChain {
@@ -54,7 +57,8 @@ interface Channel {
 
 interface Track extends Channel {
   createCursorDevice(id?: string, name?: string, numSends?: number, followMode?: any): CursorDevice;
-  deviceChain(): DeviceChain;
+  endOfDeviceChainInsertionPoint(): InsertionPoint;
+  clipLauncherSlotBank(): ClipLauncherSlotBank;
 }
 
 interface CursorTrack extends Track {
@@ -76,6 +80,37 @@ interface TrackBank {
   getItemAt(index: number): Track;
   itemCount(): IntegerValue;
   scrollPosition(): SettableIntegerValue;
+}
+
+// Clip Launcher interfaces
+interface ClipLauncherSlotBank {
+  getItemAt(index: number): ClipLauncherSlot;
+  createEmptyClip(slotIndex: number, lengthInBeats: number): void;
+}
+
+interface ClipLauncherSlot {
+  name(): StringValue;
+  hasContent(): BooleanValue;
+  isPlaying(): BooleanValue;
+  isRecording(): BooleanValue;
+  launch(): void;
+  stop(): void;
+  deleteObject(): void;
+  select(): void;
+}
+
+// Clip interface for step sequencer operations
+interface Clip {
+  setStepSize(stepSize: number): void;
+  setStep(channel: number, x: number, y: number, insertVelocity: number, insertDuration: number): void;
+  clearStep(channel: number, x: number, y: number): void;
+  clearSteps(): void;
+  scrollToKey(key: number): void;
+  scrollToStep(step: number): void;
+  getLoopStart(): SettableValue<number>;
+  getLoopLength(): SettableValue<number>;
+  getPlayStart(): SettableValue<number>;
+  getPlayStop(): SettableValue<number>;
 }
 
 interface Application {
@@ -100,6 +135,7 @@ declare const host: {
   createCursorTrack(id: string, name: string, numSends: number, numScenes: number, shouldFollowSelection: boolean): CursorTrack;
   createMainTrackBank(numTracks: number, numSends: number, numScenes: number): TrackBank;
   createApplication(): Application;
+  createLauncherCursorClip(gridWidth: number, gridHeight: number): Clip;
 };
 
 // Java interop for file I/O (Nashorn provides access to Java classes)
@@ -143,8 +179,10 @@ const JEANNIE_VERSION = loadVersion();
 
 // Track management globals (initialized in init())
 let cursorTrack: CursorTrack;
+let cursorDevice: CursorDevice;
 let trackBank: TrackBank;
 let application: Application;
+let cursorClip: Clip;
 
 loadAPI(18);
 
@@ -505,13 +543,108 @@ function renameTrack(name: string): boolean {
   }
 }
 
+// Insert file (preset) into current track - Bitwig auto-detects plugin from file type
+function insertPresetFile(filePath: string): boolean {
+  try {
+    log('Inserting preset file: ' + filePath);
+    const insertionPoint = cursorTrack.endOfDeviceChainInsertionPoint();
+    insertionPoint.insertFile(filePath);
+    log('Preset file inserted successfully');
+    return true;
+  } catch (e) {
+    log('Error inserting preset file: ' + e, 'error');
+    return false;
+  }
+}
+
+// Create an empty clip on the current track at the specified slot
+function createClip(slotIndex: number, lengthInBeats: number): boolean {
+  try {
+    log('Creating clip at slot ' + slotIndex + ' with length ' + lengthInBeats + ' beats');
+    const slotBank = cursorTrack.clipLauncherSlotBank();
+    slotBank.createEmptyClip(slotIndex, lengthInBeats);
+    // Select the slot so cursorClip points to it
+    const slot = slotBank.getItemAt(slotIndex);
+    slot.select();
+    log('Clip created and selected');
+    return true;
+  } catch (e) {
+    log('Error creating clip: ' + e, 'error');
+    return false;
+  }
+}
+
+// Note definition for setNotes
+interface NoteData {
+  pitch: number;      // MIDI note number (0-127)
+  start: number;      // Start time in beats
+  duration: number;   // Duration in beats
+  velocity: number;   // Velocity (0-127)
+  channel?: number;   // MIDI channel (0-15), default 0
+}
+
+// Set notes in the current cursor clip
+// Notes are specified with pitch, start (beats), duration (beats), velocity
+function setNotes(notes: NoteData[]): boolean {
+  try {
+    log('Setting ' + notes.length + ' notes in cursor clip');
+
+    // The step sequencer grid uses:
+    // x = time position (in steps, where step size was set to 0.25 = 16th notes)
+    // y = pitch (MIDI note number)
+    // So to convert beats to steps: steps = beats / 0.25 = beats * 4
+
+    const stepsPerBeat = 4;  // 16th note resolution
+    const gridWidth = 128;   // Cursor clip grid width
+
+    // Sort notes by start time
+    const sortedNotes = notes.slice().sort((a, b) => a.start - b.start);
+
+    // Track current scroll position
+    let currentScrollStep = 0;
+    cursorClip.scrollToStep(0);
+
+    for (let i = 0; i < sortedNotes.length; i++) {
+      const note = sortedNotes[i];
+      const channel = note.channel || 0;
+      const absoluteStep = Math.round(note.start * stepsPerBeat);  // Convert beats to steps
+      const y = note.pitch;
+      const velocity = Math.max(0, Math.min(127, note.velocity));
+      const duration = note.duration;
+
+      // Calculate which window this note falls into
+      const windowStart = Math.floor(absoluteStep / gridWidth) * gridWidth;
+
+      // Scroll if we need to move to a new window
+      if (windowStart !== currentScrollStep) {
+        cursorClip.scrollToStep(windowStart);
+        currentScrollStep = windowStart;
+      }
+
+      // Calculate x relative to current window
+      const x = absoluteStep - currentScrollStep;
+
+      cursorClip.setStep(channel, x, y, velocity, duration);
+    }
+
+    // Scroll back to start
+    cursorClip.scrollToStep(0);
+
+    log('Notes set successfully');
+    return true;
+  } catch (e) {
+    log('Error setting notes: ' + e, 'error');
+    return false;
+  }
+}
+
 // Insert device into current track
-function insertDevice(deviceId: string, deviceType: 'vst3' | 'vst2' | 'bitwig'): boolean {
+function insertDevice(deviceId: string, deviceType: 'vst3' | 'vst2' | 'bitwig' | 'clap'): boolean {
   try {
     log('Inserting device: ' + deviceId + ' (type: ' + deviceType + ')');
 
-    const cursorDevice = cursorTrack.createCursorDevice('primary', 'Primary', 0, 'FOLLOW');
-    const insertionPoint = cursorTrack.deviceChain().endOfDeviceChainInsertionPoint();
+    // Get insertion point directly from cursor track (not deviceChain)
+    const insertionPoint = cursorTrack.endOfDeviceChainInsertionPoint();
 
     switch (deviceType) {
       case 'vst3':
@@ -519,6 +652,9 @@ function insertDevice(deviceId: string, deviceType: 'vst3' | 'vst2' | 'bitwig'):
         break;
       case 'vst2':
         insertionPoint.insertVST2Device(parseInt(deviceId));
+        break;
+      case 'clap':
+        insertionPoint.insertCLAPDevice(deviceId);
         break;
       case 'bitwig':
         insertionPoint.insertBitwigDevice(deviceId);
@@ -734,6 +870,57 @@ function setTrackPan(pan: number): boolean {
   }
 }
 
+// Find tracks by name (exact match, case-insensitive)
+function findTracksByName(name: string): { index: number; name: string }[] {
+  try {
+    const matches: { index: number; name: string }[] = [];
+    const bankSize = 16;
+    const searchName = name.toLowerCase();
+
+    for (let i = 0; i < bankSize; i++) {
+      const track = trackBank.getItemAt(i);
+      if (track && track.exists().get()) {
+        const trackName = track.name().get();
+        if (trackName.toLowerCase() === searchName) {
+          matches.push({ index: i, name: trackName });
+        }
+      }
+    }
+
+    log('Found ' + matches.length + ' track(s) named "' + name + '"');
+    return matches;
+  } catch (e) {
+    log('Error finding tracks by name: ' + e, 'error');
+    return [];
+  }
+}
+
+// Select track by name - returns success and track info, or error if 0 or 2+ matches
+function selectTrackByName(name: string): { success: boolean; error?: string; track?: any } {
+  try {
+    const matches = findTracksByName(name);
+
+    if (matches.length === 0) {
+      return { success: false, error: 'No track found with name: ' + name };
+    }
+
+    if (matches.length > 1) {
+      return { success: false, error: 'Multiple tracks (' + matches.length + ') found with name: ' + name };
+    }
+
+    // Exactly one match - select it
+    const trackIndex = matches[0].index;
+    if (selectTrackByIndex(trackIndex)) {
+      return { success: true, track: getTrackInfo() };
+    } else {
+      return { success: false, error: 'Failed to select track at index ' + trackIndex };
+    }
+  } catch (e) {
+    log('Error selecting track by name: ' + e, 'error');
+    return { success: false, error: 'Exception: ' + e };
+  }
+}
+
 // Process commands from file
 function processCommands(): void {
   if (!fileExists(COMMANDS_FILE)) {
@@ -856,6 +1043,58 @@ function processCommands(): void {
             } else {
               response.error = 'Missing pan parameter';
             }
+            break;
+
+          case 'findTracksByName':
+            if (cmd.params.name) {
+              const matches = findTracksByName(cmd.params.name);
+              response.success = true;
+              response.data = { matches, count: matches.length };
+            } else {
+              response.error = 'Missing name parameter';
+            }
+            break;
+
+          case 'selectTrackByName':
+            if (cmd.params.name) {
+              const result = selectTrackByName(cmd.params.name);
+              response.success = result.success;
+              response.data = result.track;
+              response.error = result.error;
+            } else {
+              response.error = 'Missing name parameter';
+            }
+            break;
+
+          case 'insertPresetFile':
+            if (cmd.params.filePath) {
+              response.success = insertPresetFile(cmd.params.filePath);
+            } else {
+              response.error = 'Missing filePath parameter';
+            }
+            break;
+
+          case 'createClip':
+            if (cmd.params.slotIndex !== undefined && cmd.params.lengthInBeats !== undefined) {
+              response.success = createClip(cmd.params.slotIndex, cmd.params.lengthInBeats);
+            } else {
+              response.error = 'Missing slotIndex or lengthInBeats parameter';
+            }
+            break;
+
+          case 'setNotes':
+            if (cmd.params.notes && Array.isArray(cmd.params.notes)) {
+              response.success = setNotes(cmd.params.notes);
+              response.data = { notesSet: cmd.params.notes.length };
+            } else {
+              response.error = 'Missing or invalid notes array';
+            }
+            break;
+
+          case 'clearClip':
+            cursorClip.clearSteps();
+            response.success = true;
+            log('Clip cleared');
             break;
 
           default:
@@ -989,12 +1228,35 @@ function init(): void {
     log('Application API initialized');
 
     // Create cursor track for track selection and manipulation
-    cursorTrack = host.createCursorTrack('jeannie-cursor', 'Jeannie Cursor', 0, 0, true);
-    log('Cursor track initialized');
+    // numSends=0, numScenes=8 (need scenes for clip launcher slots)
+    cursorTrack = host.createCursorTrack('jeannie-cursor', 'Jeannie Cursor', 0, 8, true);
+    log('Cursor track initialized (8 scene slots)');
+
+    // Create cursor device for device insertion (must be created at init time)
+    const CursorDeviceFollowMode = Java.type('com.bitwig.extension.controller.api.CursorDeviceFollowMode');
+    cursorDevice = cursorTrack.createCursorDevice('jeannie-device', 'Jeannie Device', 0, CursorDeviceFollowMode.FOLLOW_SELECTION);
+    log('Cursor device initialized');
 
     // Create track bank for accessing multiple tracks
-    trackBank = host.createMainTrackBank(16, 0, 0);
-    log('Track bank initialized (16 tracks)');
+    trackBank = host.createMainTrackBank(16, 0, 8);  // 16 tracks, 0 sends, 8 scenes
+    log('Track bank initialized (16 tracks, 8 scenes)');
+
+    // Create cursor clip for clip/note manipulation
+    // Grid: 128 steps (32 bars at 4 steps/beat) x 128 keys (full MIDI range)
+    cursorClip = host.createLauncherCursorClip(128, 128);
+    cursorClip.setStepSize(0.25);  // 16th notes (1/4 beat per step)
+    log('Cursor clip initialized (128x128 grid, 16th note resolution)');
+
+    // Mark track properties as interested so we can read them at runtime
+    for (let i = 0; i < 16; i++) {
+      const track = trackBank.getItemAt(i);
+      track.name().markInterested();
+      track.exists().markInterested();
+      track.mute().markInterested();
+      track.solo().markInterested();
+      track.position().markInterested();
+    }
+    log('Track bank properties marked as interested');
 
     // Subscribe to track name changes
     cursorTrack.name().addValueObserver((name: string) => {
